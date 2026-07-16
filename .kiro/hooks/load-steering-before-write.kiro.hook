@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "name": "Load Steering Before Writing",
+  "description": "Nhắc agent load các steering files (api-spec, code-graph, implementation-references, libs-axum, libs-sqlx, system-design) trước khi thực hiện bất kỳ thao tác write nào, để đảm bảo code tuân thủ đúng spec và patterns.",
+  "version": "1",
+  "when": {
+    "type": "preToolUse",
+    "toolTypes": [
+      "write"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "TRƯỚC KHI VIẾT CODE: Kiểm tra xem bạn đã load các steering files sau chưa (dùng disclose_context nếu chưa load):\n1. d:\\Apps\\dbms\\.kiro\\steering\\api-spec.md\n2. d:\\Apps\\dbms\\.kiro\\steering\\code-graph.md  \n3. d:\\Apps\\dbms\\.kiro\\steering\\implementation-references.md\n4. d:\\Apps\\dbms\\.kiro\\steering\\libs-axum.md (nếu viết backend API)\n5. d:\\Apps\\dbms\\.kiro\\steering\\libs-sqlx.md (nếu viết database queries)\n6. d:\\Apps\\dbms\\.kiro\\steering\\system-design.md\n\nNếu các file này đã được load trong context hiện tại (thấy trong \"Included Rules\" hoặc đã gọi disclose_context trước đó), tiếp tục viết code. Nếu chưa, load chúng trước."
+  }
+}

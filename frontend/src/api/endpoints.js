@@ -47,6 +47,7 @@ export const DATABASES = {
   LIST: "/databases",
   MY_PERMISSIONS: "/databases/my-permissions",
   CREATE: "/databases",
+  TEST_NEW: "/databases/test-new",
   GET: (id) => `/databases/${id}`,
   UPDATE: (id) => `/databases/${id}`,
   TEST: (id) => `/databases/${id}/test`,

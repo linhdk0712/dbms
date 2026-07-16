@@ -7,6 +7,8 @@
   let error = null;
   let showForm = false;
   let testResult = null;
+  let testingNew = false;
+  let testNewResult = null;
 
   // Form fields
   let form = { name: "", db_type: "postgresql", host: "", port: 5432, database_name: "", schema_name: "", username: "", password: "", timeout_secs: 30 };
@@ -24,6 +26,24 @@
     }
   }
 
+  async function handleTestNew() {
+    testingNew = true;
+    testNewResult = null;
+    try {
+      const payload = {
+        ...form,
+        port: parseInt(form.port),
+        timeout_secs: parseInt(form.timeout_secs),
+        schema_name: form.schema_name || null,
+      };
+      testNewResult = await api.databases.testNew(payload);
+    } catch (e) {
+      testNewResult = { status: "error", message: e.error || "Không thể kết nối." };
+    } finally {
+      testingNew = false;
+    }
+  }
+
   async function handleCreate() {
     try {
       await api.databases.create({
@@ -33,6 +53,7 @@
         schema_name: form.schema_name || null,
       });
       showForm = false;
+      testNewResult = null;
       form = { name: "", db_type: "postgresql", host: "", port: 5432, database_name: "", schema_name: "", username: "", password: "", timeout_secs: 30 };
       loadDatabases();
     } catch (e) {
@@ -99,8 +120,21 @@
         </div>
         <div class="card-actions mt-4">
           <button class="btn btn-primary" on:click={handleCreate}>Tạo</button>
+          <button class="btn btn-outline btn-info" on:click={handleTestNew} disabled={testingNew || !form.host || !form.database_name || !form.username || !form.password}>
+            {#if testingNew}
+              <span class="loading loading-spinner loading-xs"></span>
+              Đang kiểm tra...
+            {:else}
+              Kiểm tra kết nối
+            {/if}
+          </button>
           <button class="btn btn-ghost" on:click={() => (showForm = false)}>Hủy</button>
         </div>
+        {#if testNewResult}
+          <div class="alert {testNewResult.status === 'ok' ? 'alert-success' : 'alert-error'} mt-3">
+            <span>{testNewResult.status === 'ok' ? '✓ Kết nối thành công!' : `✗ ${testNewResult.message}`}</span>
+          </div>
+        {/if}
       </div>
     </div>
   {/if}

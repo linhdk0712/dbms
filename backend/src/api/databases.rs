@@ -140,6 +140,47 @@ pub async fn update_database(
     Ok(Json(DatabaseConnectionResponse::from(conn)))
 }
 
+/// `POST /api/v1/databases/test-new` — Test kết nối với raw params (chưa lưu DB).
+/// Dùng cho form tạo mới: kiểm tra connection trước khi nhấn "Tạo".
+pub async fn test_new_connection(
+    State(_state): State<AppState>,
+    RequireAdmin(_claims): RequireAdmin,
+    Json(body): Json<CreateDatabaseBody>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    // Validate db_type
+    let valid_types = ["postgresql", "mysql", "oracle", "mongodb"];
+    if !valid_types.contains(&body.db_type.as_str()) {
+        return Err(AppError::ValidationError(format!(
+            "db_type must be one of: {}",
+            valid_types.join(", ")
+        )));
+    }
+
+    let credentials = executor::DbCredentials {
+        username: body.username,
+        password: body.password,
+    };
+
+    match executor::test_db_connection(
+        &body.db_type,
+        &credentials,
+        &body.host,
+        body.port,
+        &body.database_name,
+    )
+    .await
+    {
+        Ok(()) => Ok(Json(serde_json::json!({
+            "status": "ok",
+            "message": "connection successful"
+        }))),
+        Err(e) => Ok(Json(serde_json::json!({
+            "status": "error",
+            "message": e.to_string()
+        }))),
+    }
+}
+
 /// `POST /api/v1/databases/:id/test` — Test kết nối đến database đích.
 pub async fn test_connection(
     State(state): State<AppState>,

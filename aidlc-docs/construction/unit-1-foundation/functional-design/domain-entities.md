@@ -103,7 +103,7 @@ CHECK (approved_by IS NULL OR approved_by != created_by)
 ```
 AuditLog {
     id: Uuid (PK)
-    request_id: Uuid (FK → SqlRequest)
+    request_id: Option<Uuid> (FK → SqlRequest, NULL cho admin actions)
     action: AuditAction
     actor_id: Uuid (FK → User)
     detail: Option<String> (rejection reason, error message, v.v.)
@@ -120,6 +120,10 @@ AuditAction {
     Executed,
     Failed,
     Cancelled,
+    Executing,
+    RoleChanged,
+    UserStatusChanged,
+    CredentialRotated,
 }
 ```
 

@@ -19,7 +19,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 |------|-------|
 | `db/mod.rs` | Export tất cả sub-modules |
 | `db/requests.rs` | CRUD cho sql_requests: create, get, list, submit, approve, reject, cancel, mark_executed/failed. `list_pending(pool, checker_user_id)` excludes checker's own requests (4-eyes, Req 13.1/13.2) |
-| `db/audit.rs` | Insert audit log (append-only), fetch by request_id/actor_id. `insert_admin_action()` cho admin actions không gắn request (request_id = NULL) |
+| `db/audit.rs` | Insert audit log (append-only), fetch by request_id/actor_id. `insert_admin_action()` cho admin actions không gắn request (request_id = NULL). Actions: CREATED, SUBMITTED, APPROVED, REJECTED, EXECUTED, FAILED, CANCELLED, EXECUTING, ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
 | `db/databases.rs` | CRUD cho database_connections: create, get, list, update, update_credentials |
 | `db/permissions.rs` | check_permission, grant, revoke, list_user_permissions, list_database_users |
 
@@ -35,7 +35,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 |------|-------|
 | `api/requests.rs` | Maker: POST create, GET list, GET detail, POST submit, POST cancel |
 | `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ async SQL exec), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. |
-| `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-connection |
+| `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET/POST/DELETE permissions |
 | `api/dashboard.rs` | GET dashboard stats (aggregate counts) |
 
@@ -82,7 +82,8 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | GET | `/api/v1/databases` | Admin | list DB connections |
 | GET | `/api/v1/databases/:id` | Admin | DB detail |
 | PATCH | `/api/v1/databases/:id` | Admin | update DB |
-| POST | `/api/v1/databases/:id/test` | Admin | test connection |
+| POST | `/api/v1/databases/test-new` | Admin | test connection (raw params, chưa lưu) |
+| POST | `/api/v1/databases/:id/test` | Admin | test connection (đã lưu) |
 | GET | `/api/v1/users` | Admin | list users |
 | GET | `/api/v1/users/:id/permissions` | Admin | user permissions |
 | POST | `/api/v1/users/:id/permissions` | Admin | grant permission |

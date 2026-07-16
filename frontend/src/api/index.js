@@ -218,6 +218,11 @@ const databases = {
   async test(id) {
     return apiFetch(DATABASES.TEST(id), { method: "POST" });
   },
+
+  /** Test kết nối với raw params trước khi tạo (Admin only) */
+  async testNew(payload) {
+    return apiFetch(DATABASES.TEST_NEW, { method: "POST", body: payload });
+  },
 };
 
 // ─── Users ─────────────────────────────────────────────────────────────────────
