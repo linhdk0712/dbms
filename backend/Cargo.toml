@@ -1,0 +1,82 @@
+[package]
+name = "secs-backend"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "secs-backend"
+path = "src/main.rs"
+
+[dependencies]
+# HTTP
+axum = { version = "0.7", features = ["ws", "macros"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "timeout", "limit"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Database
+sqlx = { version = "0.8", features = [
+    "postgres",
+    "mysql",
+    "runtime-tokio-rustls",
+    "migrate",
+    "chrono",
+    "uuid",
+] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+validator = { version = "0.18", features = ["derive"] }
+openidconnect = "3"
+oauth2 = "4"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Config
+dotenvy = "0.15"
+
+# Encryption (AES-256-GCM cho credentials database đích)
+aes-gcm = "0.10"
+base64 = { version = "0.22", features = ["std"] }
+hex = "0.4"
+
+# URL types (dùng bởi openidconnect)
+url = "2"
+urlencoding = "2"
+
+# SQL analysis
+regex = "1"
+
+# MongoDB
+mongodb = "3"
+
+# Oracle database (cần Oracle Instant Client trên máy để compile)
+oracle = { version = "0.6", optional = true }
+
+[features]
+default = []
+oracle-support = ["dep:oracle"]
+
+[dev-dependencies]
+proptest = "1"
+tokio-test = "0.4"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

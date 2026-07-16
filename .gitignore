@@ -1,0 +1,27 @@
+# Environment variables — KHÔNG bao giờ commit
+.env
+.env.local
+.env.production
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Frontend
+node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

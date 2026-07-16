@@ -1,0 +1,80 @@
+{
+  "realm": "secs",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "realm": [
+      { "name": "admin", "description": "System administrator" },
+      { "name": "maker", "description": "SQL request creator" },
+      { "name": "checker", "description": "SQL request approver" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "secs-backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "change-me-oidc-client-secret",
+      "redirectUris": ["http://localhost:8088/*", "http://localhost/*"],
+      "webOrigins": ["http://localhost:8088", "http://localhost"],
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "authorizationServicesEnabled": false,
+      "fullScopeAllowed": true,
+      "defaultClientScopes": ["openid", "email", "profile", "roles"],
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin_user",
+      "enabled": true,
+      "email": "admin@secs.local",
+      "firstName": "Admin",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "admin123", "temporary": false }],
+      "realmRoles": ["admin", "maker", "checker"]
+    },
+    {
+      "username": "maker_user",
+      "enabled": true,
+      "email": "maker@secs.local",
+      "firstName": "Maker",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "maker123", "temporary": false }],
+      "realmRoles": ["maker"]
+    },
+    {
+      "username": "checker_user",
+      "enabled": true,
+      "email": "checker@secs.local",
+      "firstName": "Checker",
+      "lastName": "User",
+      "credentials": [{ "type": "password", "value": "checker123", "temporary": false }],
+      "realmRoles": ["checker"]
+    }
+  ]
+}

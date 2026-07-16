@@ -1,0 +1,91 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL (database nội bộ) ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: secs_postgres
+    environment:
+      POSTGRES_USER: secs_user
+      POSTGRES_PASSWORD: secs_password
+      POSTGRES_DB: secs_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U secs_user -d secs_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Keycloak (OIDC provider) ──────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: secs_keycloak
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: 8080
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/secs-realm.json:/opt/keycloak/data/import/secs-realm.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/8080 && echo done"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # ── Backend (Rust/Axum) ───────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: secs_backend
+    environment:
+      DATABASE_URL: postgres://secs_user:secs_password@postgres:5432/secs_db
+      JWT_SECRET: change-me-to-a-random-256-bit-secret-string-minimum-32-chars
+      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      OIDC_ISSUER_URL: http://localhost:8080/realms/secs
+      OIDC_CLIENT_ID: secs-backend
+      OIDC_CLIENT_SECRET: change-me-oidc-client-secret
+      OIDC_REDIRECT_URI: http://localhost:8088/auth/callback
+      FRONTEND_URL: http://localhost:8088
+      SQL_EXECUTION_TIMEOUT_SECS: "30"
+      RUST_LOG: info,secs_backend=debug
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "localhost:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Frontend (Svelte + Nginx) ─────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: secs_frontend
+    ports:
+      - "8088:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
