@@ -10,6 +10,31 @@ khi bắt đầu giai đoạn tiếp theo (trừ G3+G4 có thể song song).
 
 ---
 
+## ⚡ Trạng thái hiện tại (2026-07-17)
+
+| Giai đoạn | Trạng thái | Ghi chú |
+|-----------|-----------|---------|
+| G0: Môi trường | ✅ Hoàn thành | Docker Compose, .env, Cargo.toml, package.json |
+| G1: Nền tảng | ✅ Hoàn thành | 8 migrations, models, config, error, state |
+| G2: Auth | ✅ Hoàn thành | OIDC/PKCE, JWT, middleware, extractors, rate_limit, session cleanup |
+| G3: Backend core | ✅ Hoàn thành | Full CRUD, multi-level approval, executor (PG+MySQL+Oracle+MongoDB), sql_analyzer, WebSocket |
+| G4: Frontend | ✅ Hoàn thành | All pages, CodeMirror SQL/JSON editor, DaisyUI, SPA router, WS notifications |
+| G5: Hardening | ✅ Phần lớn | Security headers, CORS, rate limit, body limit, credential encryption, audit, DDL analysis |
+| G6: Deploy | ✅ Docker ready | Multi-stage Dockerfile, nginx reverse proxy |
+
+**Tính năng bổ sung đã implement (ngoài plan ban đầu):**
+- Multi-level approval (1-5 levels per database, configurable)
+- Daily log file rotation (tracing-appender, non-blocking)
+- Credential rotation endpoint với audit
+- Admin audit actions (ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED)
+- First-user bootstrap (auto ADMIN)
+- Admin self-protection (cannot deactivate self)
+- Pagination for request lists
+- Clone request functionality
+- Test new connection before saving
+
+---
+
 ## Giai đoạn 0 — Chuẩn bị môi trường (1-2 ngày)
 
 **Mục tiêu**: Team có thể clone và chạy được ngay.

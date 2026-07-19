@@ -12,6 +12,7 @@
 ### Database hệ thống (lưu trữ nội bộ)
 - **PostgreSQL** — lưu users, SQL requests, audit log, database connections config
 - **ORM/Query**: `sqlx` với compile-time query checking
+- **Migrations**: 8 files (001-008), bao gồm multi-level approval và admin audit actions
 
 ### Kết nối Database đích (target databases)
 - `sqlx` — PostgreSQL, MySQL
@@ -26,6 +27,7 @@
 
 ### Realtime & Notification
 - **WebSocket**: axum built-in — thông báo realtime khi có request mới hoặc được approve
+- **Logging**: `tracing` + `tracing-subscriber` (JSON stdout) + `tracing-appender` (daily file rotation)
 
 ## Frontend
 

@@ -11,6 +11,7 @@ mod ws;
 use anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::broadcast;
+use tracing_appender::rolling;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::auth::oidc::create_oidc_client;
@@ -30,11 +31,11 @@ async fn main() -> Result<()> {
     // 1. Load .env (nếu có) — bỏ qua lỗi nếu không tồn tại
     let _ = dotenvy::dotenv();
 
-    // 2. Init structured JSON logging
-    init_tracing();
-
-    // 3. Load config — fail fast nếu thiếu required vars
+    // 2. Load config — fail fast nếu thiếu required vars
     let config = Config::from_env().context("failed to load configuration")?;
+
+    // 3. Init structured logging (stdout JSON + file daily rotation)
+    let _guard = init_tracing(&config.log_dir);
     tracing::info!("configuration loaded successfully");
 
     // 4. Kết nối database pool
@@ -104,14 +105,40 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Khởi tạo tracing với JSON structured logging.
+/// Khởi tạo tracing với dual output:
+/// - stdout: JSON structured (cho Docker/container logs, log aggregators)
+/// - file: daily rotation, human-readable format (cho manual debug)
+///
 /// Level được điều khiển bởi RUST_LOG env var (default: info).
-fn init_tracing() {
+/// File log được lưu tại `{log_dir}/secs-backend.YYYY-MM-DD.log`.
+///
+/// Trả về `WorkerGuard` — PHẢI giữ trong scope của main() để đảm bảo
+/// tất cả log được flush trước khi process exit.
+fn init_tracing(log_dir: &str) -> tracing_appender::non_blocking::WorkerGuard {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
+    // File appender: daily rotation, prefix "secs-backend"
+    let file_appender = rolling::daily(log_dir, "secs-backend.log");
+    let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
+
+    // Stdout layer: JSON format (machine-readable, cho log aggregators)
+    let stdout_layer = tracing_subscriber::fmt::layer().json();
+
+    // File layer: plain text với timestamps, targets, thread IDs (human-readable)
+    let file_layer = tracing_subscriber::fmt::layer()
+        .with_writer(non_blocking_file)
+        .with_ansi(false)
+        .with_target(true)
+        .with_thread_ids(true)
+        .with_file(true)
+        .with_line_number(true);
+
     tracing_subscriber::registry()
         .with(filter)
-        .with(tracing_subscriber::fmt::layer().json())
+        .with(stdout_layer)
+        .with(file_layer)
         .init();
+
+    guard
 }

@@ -21,6 +21,8 @@ pub struct Config {
     /// OIDC cleanup interval in seconds (default: 60, range: 10-300)
     pub oidc_cleanup_interval_secs: u64,
     pub port: u16,
+    /// Thư mục chứa log files (default: "./logs")
+    pub log_dir: String,
 }
 
 impl Config {
@@ -71,6 +73,7 @@ impl Config {
                 .unwrap_or_else(|_| "3000".to_string())
                 .parse::<u16>()
                 .context("PORT must be a valid port number")?,
+            log_dir: std::env::var("LOG_DIR").unwrap_or_else(|_| "./logs".to_string()),
         })
     }
 

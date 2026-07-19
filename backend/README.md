@@ -90,6 +90,7 @@ Các biến môi trường quan trọng:
 | `FRONTEND_URL` | URL frontend (cho CORS) |
 | `SQL_EXECUTION_TIMEOUT_SECS` | Timeout thực thi SQL (default: 30s) |
 | `RUST_LOG` | Log level (default: `info,secs_backend=debug`) |
+| `LOG_DIR` | Thư mục lưu file log rotation (default: `./logs`) |
 | `PORT` | Server port (default: 3000) |
 
 ### 2. Chạy database migration

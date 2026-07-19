@@ -4,84 +4,98 @@
 dbms/
 ├── backend/                        # Rust backend
 │   ├── src/
-│   │   ├── main.rs                 # Entry point, khởi tạo server
-│   │   ├── config.rs               # Load cấu hình từ env/file
-│   │   ├── error.rs                # Custom error types (thiserror)
+│   │   ├── main.rs                 # Entry point, dual logging (stdout + file), startup
+│   │   ├── config.rs               # Load cấu hình từ env (LOG_DIR, OIDC session params)
+│   │   ├── error.rs                # AppError enum + IntoResponse (4xx/5xx)
+│   │   ├── state.rs                # AppState { db, config, notification_tx, oidc_client, oidc_sessions }
 │   │   │
-│   │   ├── api/                    # HTTP handlers (axum routes)
-│   │   │   ├── mod.rs
-│   │   │   ├── auth.rs             # SSO callback, login, logout
-│   │   │   ├── requests.rs         # CRUD cho SQL requests (Maker)
-│   │   │   ├── approvals.rs        # Review, approve, reject (Checker)
-│   │   │   ├── databases.rs        # Quản lý database connections
-│   │   │   ├── users.rs            # Quản lý users và roles
-│   │   │   └── dashboard.rs        # Dữ liệu tổng hợp cho dashboard
+│   │   ├── api/                    # HTTP handlers (axum routes) — MỎNG
+│   │   │   ├── mod.rs              # build_router(), CORS, security headers, body limit
+│   │   │   ├── auth.rs             # OIDC login/callback, logout, me, session cleanup
+│   │   │   ├── requests.rs         # Maker: create, list, detail, update, submit, cancel, clone
+│   │   │   ├── approvals.rs        # Checker: list_pending, detail, approve, reject + SQL execution
+│   │   │   ├── audit.rs            # GET /requests/:id/audit (access control)
+│   │   │   ├── databases.rs        # Admin: CRUD, test, test-new, credentials + Maker: my-permissions
+│   │   │   ├── users.rs            # Admin: list, detail, update, permissions CRUD
+│   │   │   ├── dashboard.rs        # Role-aware stats (Admin/Checker/Maker)
+│   │   │   ├── health.rs           # GET /health (DB pool check)
+│   │   │   └── ip_extractor.rs     # extract_client_ip (X-Forwarded-For priority)
 │   │   │
 │   │   ├── executor/               # Thực thi SQL trên database đích
-│   │   │   ├── mod.rs              # DatabaseExecutor trait
-│   │   │   ├── postgres.rs         # PostgreSQL driver impl
-│   │   │   ├── oracle.rs           # Oracle driver impl
-│   │   │   ├── mysql.rs            # MySQL driver impl
-│   │   │   └── mongodb.rs          # MongoDB driver impl
+│   │   │   ├── mod.rs              # DatabaseExecutor trait, execute_sql(), test_db_connection()
+│   │   │   ├── encryption.rs       # AES-256-GCM encrypt/decrypt credentials
+│   │   │   ├── postgres.rs         # PgExecutor (sslmode=require, transaction)
+│   │   │   ├── mysql.rs            # MySqlExecutor (ssl-mode=REQUIRED, transaction)
+│   │   │   ├── oracle.rs           # OracleExecutor (TCPS, spawn_blocking)
+│   │   │   ├── mongodb.rs          # MongoExecutor (tls=true, JSON commands, session TX)
+│   │   │   └── sql_analyzer.rs     # DDL detection (Warning/Danger severity)
 │   │   │
-│   │   ├── auth/                   # SSO/OIDC logic
+│   │   ├── auth/                   # Authentication & Authorization
 │   │   │   ├── mod.rs
-│   │   │   ├── oidc.rs             # OpenID Connect flow
-│   │   │   └── jwt.rs              # JWT tạo và xác thực
+│   │   │   ├── oidc.rs             # OpenID Connect flow (PKCE + CSRF + at_hash)
+│   │   │   ├── jwt.rs              # Claims, generate/verify (HS256, 8h, issuer)
+│   │   │   ├── middleware.rs       # require_auth (Bearer token → Claims extension)
+│   │   │   ├── extractors.rs       # RequireAuth, RequireAdmin, RequireMaker, RequireChecker
+│   │   │   └── rate_limit.rs       # 10 req/min per IP on /auth/login
 │   │   │
-│   │   ├── models/                 # Data models / domain types
+│   │   ├── models/                 # Domain types (no I/O, no side effects)
 │   │   │   ├── mod.rs
-│   │   │   ├── user.rs             # User, Role
-│   │   │   ├── request.rs          # SqlRequest, RequestStatus
-│   │   │   ├── approval.rs         # Approval, Comment
-│   │   │   └── database.rs         # DatabaseConnection config
+│   │   │   ├── user.rs             # User, Role, UserDbPermission
+│   │   │   ├── request.rs          # SqlRequest, RequestStatus + state machine
+│   │   │   ├── database.rs         # DatabaseConnection, DbType, response DTOs
+│   │   │   ├── approval.rs         # AuditLog, AuditAction (incl. admin actions)
+│   │   │   ├── notification.rs     # Notification, NotificationType
+│   │   │   └── request_approval.rs # RequestApproval (multi-level tracking)
 │   │   │
 │   │   ├── db/                     # Database access layer (PostgreSQL nội bộ)
 │   │   │   ├── mod.rs
-│   │   │   ├── migrations/         # sqlx migration files
-│   │   │   ├── users.rs
-│   │   │   ├── requests.rs
-│   │   │   └── audit.rs            # Audit log queries
+│   │   │   ├── users.rs            # upsert_from_oidc, get_roles, first-user bootstrap
+│   │   │   ├── requests.rs         # CRUD, state transitions, multi-level approval
+│   │   │   ├── audit.rs            # insert, get_by_request_id, insert_admin_action
+│   │   │   ├── databases.rs        # CRUD, list_by_user_permission, update_credentials
+│   │   │   └── permissions.rs      # check/grant/revoke/list permissions
 │   │   │
 │   │   └── ws/                     # WebSocket handlers
-│   │       └── mod.rs              # Realtime notification
+│   │       └── mod.rs              # ws_handler, role-based notification filtering
 │   │
-│   ├── tests/                      # Integration tests
+│   ├── migrations/                 # 8 SQL migration files
 │   └── Cargo.toml
 │
-├── frontend/                       # Svelte frontend
+├── frontend/                       # Svelte 4 + Vite 5 frontend
 │   ├── src/
-│   │   ├── App.svelte              # Root component + routing
-│   │   ├── app.css                 # Global styles (Tailwind/DaisyUI)
+│   │   ├── main.js                 # Svelte app mount
+│   │   ├── app.css                 # Tailwind + DaisyUI
+│   │   ├── App.svelte              # Root: svelte-spa-router, auth guard, WS connect
 │   │   │
 │   │   ├── api/                    # HTTP client wrappers
-│   │   │   ├── index.js            # Base fetch config, token attach
-│   │   │   ├── requests.js         # API calls cho SQL requests
-│   │   │   ├── approvals.js        # API calls cho approvals
-│   │   │   └── databases.js        # API calls cho database management
+│   │   │   ├── index.js            # apiFetch() + grouped API modules
+│   │   │   └── endpoints.js        # All endpoint path constants
 │   │   │
 │   │   ├── stores/                 # Svelte stores (global state)
-│   │   │   ├── auth.js             # User session, role
-│   │   │   └── notifications.js    # WebSocket notifications
+│   │   │   ├── auth.js             # authStore { token, user, login(), logout() }
+│   │   │   └── notifications.js    # WebSocket store, auto-reconnect
 │   │   │
 │   │   ├── components/             # Reusable UI components
-│   │   │   ├── SqlEditor.svelte    # Code editor cho SQL input
-│   │   │   ├── StatusBadge.svelte  # Badge trạng thái request
-│   │   │   ├── RequestCard.svelte  # Card hiển thị một request
-│   │   │   └── Navbar.svelte
+│   │   │   ├── Navbar.svelte       # Logo, theme toggle, user dropdown
+│   │   │   ├── Sidebar.svelte      # Role-based navigation
+│   │   │   ├── SqlEditor.svelte    # CodeMirror 6 (SQL + JSON)
+│   │   │   ├── StatusBadge.svelte  # Status color badge
+│   │   │   └── Toast.svelte        # WS notification toasts
 │   │   │
 │   │   └── pages/                  # Page-level views
-│   │       ├── Login.svelte        # Trang đăng nhập / SSO redirect
-│   │       ├── Dashboard.svelte    # Tổng hợp theo role
+│   │       ├── Login.svelte            # SSO redirect
+│   │       ├── AuthCallback.svelte     # OIDC callback handler
+│   │       ├── Dashboard.svelte        # Role-aware stats + quick links
 │   │       ├── maker/
-│   │       │   ├── NewRequest.svelte    # Tạo SQL request mới
-│   │       │   └── MyRequests.svelte    # Danh sách request của Maker
+│   │       │   ├── NewRequest.svelte   # Form (SQL/JSON auto-detect)
+│   │       │   ├── MyRequests.svelte   # Paginated list + actions
+│   │       │   └── RequestDetail.svelte # Detail + edit + audit timeline + clone
 │   │       ├── checker/
-│   │       │   ├── PendingList.svelte   # Danh sách chờ duyệt
-│   │       │   └── ReviewDetail.svelte  # Chi tiết review + approve
+│   │       │   ├── PendingList.svelte  # Filterable + multi-level progress
+│   │       │   └── ReviewDetail.svelte # SQL + DDL analysis + approve/reject
 │   │       └── admin/
-│   │           ├── Users.svelte         # Quản lý users
-│   │           └── Databases.svelte     # Quản lý database connections
+│   │           ├── Users.svelte        # Roles + permissions + activate/deactivate
+│   │           └── Databases.svelte    # CRUD + test connection
 │   │
 │   ├── public/
 │   ├── index.html
@@ -90,8 +104,8 @@ dbms/
 │
 ├── .kiro/
 │   └── steering/
-├── .env.example                    # Template biến môi trường
-├── docker-compose.yml              # PostgreSQL + app cho local dev
+├── .env.example                    # Template biến môi trường (incl. LOG_DIR)
+├── docker-compose.yml              # PostgreSQL + Keycloak + Backend + Frontend
 ├── .gitignore
 └── README.md
 ```

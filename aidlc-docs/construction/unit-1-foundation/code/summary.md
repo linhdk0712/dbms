@@ -18,7 +18,7 @@ Unit 1 cung cấp nền tảng cho toàn hệ thống SECS: database schema, dom
 | File | Mô tả |
 |------|-------|
 | `backend/Cargo.toml` | Dependencies (axum, sqlx, tokio, jsonwebtoken, aes-gcm, proptest...) |
-| `backend/src/main.rs` | Startup sequence: config → pool → migrate → router → serve |
+| `backend/src/main.rs` | Startup sequence: config → tracing (dual: stdout JSON + file daily rotation) → pool → migrate → router → serve |
 | `backend/src/config.rs` | `Config::from_env()` — fail fast nếu thiếu required vars |
 | `backend/src/error.rs` | `AppError` + `IntoResponse` — 4xx cụ thể, 5xx generic |
 | `backend/src/state.rs` | `AppState` — db pool, config, notification broadcast channel |
