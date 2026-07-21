@@ -110,8 +110,8 @@ impl DatabaseExecutor for MySqlExecutor {
 }
 
 /// Build MySQL connection string.
-/// Luôn enforce TLS (ssl-mode=REQUIRED) theo security rule trong tech.md:
-/// "Tất cả kết nối đến database đích phải qua encrypted connection (TLS)"
+/// Enforce TLS (ssl-mode=REQUIRED) theo security rule.
+/// Nếu env var DISABLE_TARGET_DB_TLS=true → bỏ ssl-mode (chỉ cho dev/testing).
 fn build_connection_string(
     username: &str,
     password: &str,
@@ -119,12 +119,23 @@ fn build_connection_string(
     port: i32,
     database_name: &str,
 ) -> String {
+    let tls_disabled = std::env::var("DISABLE_TARGET_DB_TLS")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+
+    let ssl_param = if tls_disabled {
+        "" // không enforce TLS cho dev/testing
+    } else {
+        "?ssl-mode=REQUIRED"
+    };
+
     format!(
-        "mysql://{}:{}@{}:{}/{}?ssl-mode=REQUIRED",
+        "mysql://{}:{}@{}:{}/{}{}",
         urlencoding::encode(username),
         urlencoding::encode(password),
         host,
         port,
-        database_name
+        database_name,
+        ssl_param
     )
 }

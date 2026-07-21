@@ -1,4 +1,4 @@
-version: "3.9"
+#version: "3.9"
 
 services:
   # ── PostgreSQL (database nội bộ) ──────────────────────────────────────────────
@@ -63,6 +63,7 @@ services:
       FRONTEND_URL: http://localhost:8088
       SQL_EXECUTION_TIMEOUT_SECS: "30"
       RUST_LOG: info,secs_backend=debug
+      DISABLE_TARGET_DB_TLS: "true"
       PORT: "3000"
     ports:
       - "3000:3000"
@@ -74,6 +75,66 @@ services:
       keycloak:
         condition: service_healthy
     restart: unless-stopped
+
+  # ── MySQL (target database for testing) ─────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: secs_mysql_target
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: test_user
+      MYSQL_PASSWORD: test_password
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── MongoDB (target database for testing) ─────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: secs_mongodb_target
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin_password
+      MONGO_INITDB_DATABASE: test_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb/replica-keyfile:/data/replica-keyfile-source:ro
+    entrypoint: ["/bin/bash", "-c", "cp /data/replica-keyfile-source /data/replica-keyfile && chmod 400 /data/replica-keyfile && chown 999:999 /data/replica-keyfile && exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all --keyFile /data/replica-keyfile"]
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "admin", "-p", "admin_password", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 10s
+      retries: 15
+      start_period: 10s
+
+  # MongoDB replica set initializer (cần cho transaction support)
+  mongodb-init:
+    image: mongo:7.0
+    container_name: secs_mongodb_init
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    entrypoint: >
+      mongosh --host mongodb:27017 -u admin -p admin_password --authenticationDatabase admin --eval "
+        try {
+          rs.status();
+          print('Replica set already initialized');
+        } catch(e) {
+          rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]});
+          print('Replica set initialized');
+        }
+      "
+    restart: "no"
 
   # ── Frontend (Svelte + Nginx) ─────────────────────────────────────────────────
   frontend:
@@ -89,3 +150,5 @@ services:
 
 volumes:
   postgres_data:
+  mysql_data:
+  mongodb_data:

@@ -9,7 +9,7 @@ pub async fn check_permission(
     user_id: Uuid,
     database_id: Uuid,
 ) -> Result<bool, sqlx::Error> {
-    let result: Option<(i64,)> = sqlx::query_as(
+    let result: Option<(i32,)> = sqlx::query_as(
         r#"SELECT 1 as exists_flag FROM user_db_permissions
            WHERE user_id = $1 AND database_id = $2"#,
     )

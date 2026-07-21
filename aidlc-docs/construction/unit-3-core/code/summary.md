@@ -26,15 +26,19 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 ### Backend — Executor
 | File | Mô tả |
 |------|-------|
-| `executor/mod.rs` | `DatabaseExecutor` trait, `ExecutionResult`, `ExecutorError`, `DbCredentials` |
+| `executor/mod.rs` | `DatabaseExecutor` trait, `ExecutionResult`, `ValidationResult`, `ExecutorError`, `DbCredentials`, `execute_sql()`, `test_db_connection()`, `validate_sql()` (EXPLAIN-based validation cho PostgreSQL/MySQL/Oracle/MongoDB) |
 | `executor/postgres.rs` | PostgreSQL executor: connect, execute multi-statement in transaction, test_connection |
+| `executor/mysql.rs` | MySQL executor: connect, execute multi-statement in transaction, test_connection |
+| `executor/oracle.rs` | Oracle executor: TCPS connection, spawn_blocking, test_connection |
+| `executor/mongodb.rs` | MongoDB executor: TLS connection, JSON commands, session TX |
+| `executor/sql_analyzer.rs` | DDL detection (Warning/Danger severity) |
 | `executor/encryption.rs` | AES-256-GCM encrypt/decrypt credentials (6 unit tests, PBT roundtrip) |
 
 ### Backend — API Handlers
 | File | Mô tả |
 |------|-------|
 | `api/requests.rs` | Maker: POST create, GET list, GET detail, POST submit, POST cancel |
-| `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ async SQL exec), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. |
+| `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ **synchronous** SQL exec — result returned in response), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. Approve response includes `execution_result` with `success`/`rows_affected` or `error`. |
 | `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET/POST/DELETE permissions |
 | `api/dashboard.rs` | GET dashboard stats (aggregate counts) |
@@ -122,22 +126,66 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 ```
 approve() handler
     ├── Validate 4-eyes + state
-    ├── Update status → APPROVED (sync)
-    ├── Audit log APPROVED (sync)
-    ├── Response 200 immediately
-    └── tokio::spawn → execute_sql_async()
-                           ├── Fetch database_connection
-                           ├── Decrypt credentials (AES-256-GCM)
-                           ├── PgExecutor::execute(sql, timeout)
-                           │     ├── Connect with TLS
-                           │     ├── BEGIN TRANSACTION
-                           │     ├── Execute each statement
-                           │     ├── COMMIT (or ROLLBACK on error)
-                           │     └── Close connection
-                           ├── mark_executed() or mark_failed()
-                           ├── Audit log EXECUTED/FAILED
-                           └── Broadcast notification
+    ├── Insert approval record
+    ├── Check total approvals vs required
+    ├── If fully approved:
+    │     ├── Update status → APPROVED (sync)
+    │     ├── Audit log APPROVED (sync)
+    │     ├── Broadcast APPROVED notification
+    │     └── execute_sql_sync() — blocks until complete
+    │           ├── Fetch database_connection
+    │           ├── Decrypt credentials (AES-256-GCM)
+    │           ├── Audit log EXECUTING
+    │           ├── execute_sql(sql, timeout)
+    │           │     ├── Connect with TLS
+    │           │     ├── BEGIN TRANSACTION
+    │           │     ├── Execute each statement
+    │           │     ├── COMMIT (or ROLLBACK on error)
+    │           │     └── Close connection
+    │           ├── mark_executed() or mark_failed()
+    │           ├── Audit log EXECUTED/FAILED
+    │           ├── Broadcast notification
+    │           └── Return Ok(result) or Err(error_msg)
+    └── Response 200 with execution_result included
 ```
+
+**Note**: SQL execution là synchronous — HTTP response chờ cho đến khi execution
+hoàn tất và trả kết quả trực tiếp (`execution_result.success` + `rows_affected`
+hoặc `error`). Caller biết ngay trạng thái mà không cần poll.
+
+---
+
+## SQL Validation Architecture (EXPLAIN-based)
+
+```
+validate_sql(db_type, sql, credentials, host, port, db_name, schema, timeout)
+    ├── PostgreSQL: EXPLAIN <statement>
+    │     ├── Connect (sslmode=require, DISABLE_TARGET_DB_TLS env override)
+    │     ├── Split multi-statement by ';'
+    │     ├── EXPLAIN each statement
+    │     ├── Analyze plan: detect Seq Scan, high cost (>10000)
+    │     └── Return ValidationResult { valid, execution_plan, warnings, error }
+    ├── MySQL: EXPLAIN <statement>
+    │     ├── Connect (ssl-mode=REQUIRED, DISABLE_TARGET_DB_TLS env override)
+    │     ├── Split multi-statement
+    │     ├── Parse EXPLAIN output (select_type, table, type, key, rows, Extra)
+    │     ├── Detect full table scan (type=ALL), high row estimates (>100K)
+    │     └── Return ValidationResult
+    ├── Oracle: EXPLAIN PLAN FOR <statement>
+    │     ├── Connect via TCPS (spawn_blocking)
+    │     ├── Split multi-statement
+    │     ├── EXPLAIN PLAN SET STATEMENT_ID + query PLAN_TABLE
+    │     ├── Detect TABLE ACCESS FULL, high cost (>10000)
+    │     └── Return ValidationResult (requires feature 'oracle-support')
+    └── MongoDB: JSON structure validation only
+          ├── Parse as JSON object or array
+          ├── Validate each element is a JSON object
+          └── Return ValidationResult (no schema check — schema-less)
+```
+
+**Mục đích**: Cho phép Checker hoặc hệ thống kiểm tra SQL trước khi thực thi —
+phát hiện lỗi syntax, bảng không tồn tại, và cảnh báo performance (seq scan, high cost)
+mà không thay đổi dữ liệu trên database đích.
 
 ---
 

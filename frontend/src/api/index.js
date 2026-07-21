@@ -177,6 +177,11 @@ const approvals = {
     return apiFetch(APPROVALS.GET(id));
   },
 
+  /** Validate SQL trước khi approve (EXPLAIN check) */
+  async validate(id) {
+    return apiFetch(APPROVALS.VALIDATE(id), { method: "POST" });
+  },
+
   /** Approve request (Checker only) */
   async approve(id) {
     return apiFetch(APPROVALS.APPROVE(id), { method: "POST" });

@@ -178,10 +178,13 @@ pnpm lint && pnpm build
 
 ```yaml
 services:
-  postgres:   # Port 5432 — internal database
-  keycloak:   # Port 9090 — OIDC provider
-  backend:    # Port 3000 — Rust API server
-  frontend:   # Port 8088 — Nginx + SPA
+  postgres:       # Port 5432 — internal database
+  keycloak:       # Port 9090 — OIDC provider
+  backend:        # Port 3000 — Rust API server
+  mysql:          # Port 3306 — target database (testing)
+  mongodb:        # Port 27017 — target database (testing, replica set rs0)
+  mongodb-init:   # One-shot — initializes replica set for transaction support
+  frontend:       # Port 8088 — Nginx + SPA
 ```
 
 ## Security Constraints (ALWAYS enforce)
@@ -214,8 +217,9 @@ pnpm lint                      # Format check
 pnpm format                    # Auto-format
 
 # === Infrastructure ===
-docker compose up -d                    # Start all
-docker compose up postgres keycloak -d  # Start deps only
+docker compose up -d                                # Start all
+docker compose up postgres keycloak -d              # Start deps only
+docker compose up postgres keycloak mysql mongodb -d  # Start deps + target DBs
 docker compose logs -f backend          # Watch logs
 docker compose down                     # Stop
 docker compose down -v                  # Stop + wipe data

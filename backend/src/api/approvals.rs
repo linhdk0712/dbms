@@ -22,6 +22,7 @@ use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
+/// Request body cho endpoint reject — chứa lý do từ chối.
 #[derive(Debug, Deserialize, Validate)]
 pub struct RejectBody {
     /// Lý do reject — bắt buộc, min 10 ký tự (BR-004).
@@ -29,6 +30,10 @@ pub struct RejectBody {
     pub rejection_reason: String,
 }
 
+/// DTO trả về trong danh sách request chờ duyệt (list pending).
+///
+/// Không bao gồm `sql_content` để đảm bảo security — Checker phải
+/// mở detail mới thấy nội dung SQL.
 #[derive(Debug, Serialize)]
 pub struct ApprovalListItem {
     pub id: Uuid,
@@ -42,6 +47,10 @@ pub struct ApprovalListItem {
     pub approval_count: i64,
 }
 
+/// DTO trả về chi tiết request cho Checker review.
+///
+/// Bao gồm `sql_content` và `sql_analysis` (DDL detection) để Checker
+/// đánh giá mức độ rủi ro trước khi approve/reject.
 #[derive(Debug, Serialize)]
 pub struct ApprovalDetailResponse {
     pub id: Uuid,
@@ -218,32 +227,6 @@ pub async fn approve(
             .await
             .map_err(AppError::Database)?;
 
-        // Spawn async task để execute SQL
-        let db_pool = state.db.clone();
-        let notification_tx = state.notification_tx.clone();
-        let config = state.config.clone();
-        let sql_content = request.sql_content.clone();
-        let database_id = request.database_id;
-        let request_id = id;
-        let actor_id = claims.user_id;
-        let request_created_by = request.created_by;
-        let ip_address = Some(ip.clone());
-
-        tokio::spawn(async move {
-            execute_sql_async(
-                &db_pool,
-                &config,
-                &notification_tx,
-                request_id,
-                database_id,
-                &sql_content,
-                actor_id,
-                request_created_by,
-                ip_address,
-            )
-            .await;
-        });
-
         // Broadcast APPROVED notification
         let _ = state.notification_tx.send(Notification {
             notification_type: NotificationType::RequestApproved,
@@ -255,13 +238,48 @@ pub async fn approve(
             detail: None,
         });
 
-        Ok(Json(serde_json::json!({
-            "id": id,
-            "status": "APPROVED",
-            "approval_level": new_level,
-            "approvals_required": request.approval_levels_required,
-            "message": "Request fully approved. SQL execution in progress."
-        })))
+        // Execute SQL synchronously and return result in response
+        let execution_result = execute_sql_sync(
+            &state.db,
+            &state.config,
+            &state.notification_tx,
+            id,
+            request.database_id,
+            &request.sql_content,
+            claims.user_id,
+            request.created_by,
+            Some(ip.clone()),
+        )
+        .await;
+
+        match execution_result {
+            Ok(result) => {
+                Ok(Json(serde_json::json!({
+                    "id": id,
+                    "status": "EXECUTED",
+                    "approval_level": new_level,
+                    "approvals_required": request.approval_levels_required,
+                    "message": "Request approved and executed successfully.",
+                    "execution_result": {
+                        "success": true,
+                        "rows_affected": result.rows_affected
+                    }
+                })))
+            }
+            Err(error_msg) => {
+                Ok(Json(serde_json::json!({
+                    "id": id,
+                    "status": "FAILED",
+                    "approval_level": new_level,
+                    "approvals_required": request.approval_levels_required,
+                    "message": "Request approved but execution failed.",
+                    "execution_result": {
+                        "success": false,
+                        "error": error_msg
+                    }
+                })))
+            }
+        }
     } else {
         // Req 10.4: Not enough approvals yet — keep PENDING, broadcast partial approval
         let _ = state.notification_tx.send(Notification {
@@ -356,10 +374,235 @@ pub async fn reject(
     })))
 }
 
-// ── Async SQL Execution ────────────────────────────────────────────────
+// ── Synchronous SQL Execution (returns result to caller) ───────────────
 
-/// Thực thi SQL bất đồng bộ sau khi approve.
-/// Chạy trong tokio::spawn — không block response.
+/// `POST /api/v1/approvals/:id/validate` — Validate SQL trước khi approve.
+///
+/// Chạy EXPLAIN trên database đích để kiểm tra:
+/// - Syntax SQL hợp lệ
+/// - Bảng/cột tồn tại (schema validation)
+/// - Execution plan và performance warnings
+///
+/// Không thực thi SQL — chỉ validate.
+/// Checker PHẢI validate thành công trước khi được phép Approve & Execute.
+pub async fn validate(
+    State(state): State<AppState>,
+    RequireChecker(_claims): RequireChecker,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let request = db::requests::get_by_id(&state.db, id)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or(AppError::NotFound)?;
+
+    // Chỉ validate request đang PENDING
+    if request.status != RequestStatus::Pending {
+        return Err(AppError::InvalidStateTransition {
+            from: request.status.to_string(),
+            to: "VALIDATE".to_string(),
+        });
+    }
+
+    // Lấy database connection info
+    let db_conn = db::databases::get_by_id(&state.db, request.database_id)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or(AppError::NotFound)?;
+
+    // Decrypt credentials
+    let key_bytes = state
+        .config
+        .encryption_key_bytes()
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("encryption key error: {e}")))?;
+
+    let credentials = decrypt_credentials(&db_conn.encrypted_credentials, &key_bytes)
+        .map_err(|e| AppError::Internal(anyhow::anyhow!("credential decryption failed: {e}")))?;
+
+    // Timeout cho validation (dùng timeout ngắn hơn execution)
+    let validate_timeout = Duration::from_secs(30);
+
+    // Run EXPLAIN validation
+    let result = executor::validate_sql(
+        &db_conn.db_type.to_string(),
+        &request.sql_content,
+        &credentials,
+        &db_conn.host,
+        db_conn.port,
+        &db_conn.database_name,
+        db_conn.schema_name.as_deref(),
+        validate_timeout,
+    )
+    .await;
+
+    Ok(Json(serde_json::json!({
+        "valid": result.valid,
+        "execution_plan": result.execution_plan,
+        "warnings": result.warnings,
+        "error": result.error
+    })))
+}
+
+/// Thực thi SQL đồng bộ sau khi request được approve đủ levels.
+///
+/// Block cho đến khi execution hoàn thành, trả kết quả trực tiếp trong
+/// HTTP response — giúp caller (approve handler) biết ngay trạng thái.
+///
+/// # Flow
+/// 1. Lấy database connection info từ PostgreSQL nội bộ
+/// 2. Decrypt credentials (AES-256-GCM)
+/// 3. Ghi audit log `EXECUTING` trước khi chạy SQL (Req 11.1–11.3)
+/// 4. Thực thi SQL trên database đích với timeout = min(db_timeout, global_cap)
+/// 5. Cập nhật trạng thái request (`EXECUTED`/`FAILED`) và ghi audit log
+/// 6. Broadcast notification qua WebSocket channel
+///
+/// # Returns
+/// - `Ok(ExecutionResult)` — thực thi thành công, kèm `rows_affected`
+/// - `Err(String)` — thực thi thất bại, kèm error message mô tả lỗi
+async fn execute_sql_sync(
+    pool: &sqlx::PgPool,
+    config: &crate::config::Config,
+    notification_tx: &tokio::sync::broadcast::Sender<Notification>,
+    request_id: Uuid,
+    database_id: Uuid,
+    sql: &str,
+    actor_id: Uuid,
+    request_created_by: Uuid,
+    ip_address: Option<String>,
+) -> Result<executor::ExecutionResult, String> {
+    // 1. Lấy database connection info
+    let db_conn = match db::databases::get_by_id(pool, database_id).await {
+        Ok(Some(conn)) => conn,
+        Ok(None) => {
+            let msg = "database connection not found".to_string();
+            let _ = db::requests::mark_failed(pool, request_id, &msg).await;
+            let _ = db::audit::insert(pool, request_id, "FAILED", actor_id, Some(&msg), None, ip_address.as_deref()).await;
+            return Err(msg);
+        }
+        Err(e) => {
+            let msg = format!("failed to fetch database connection: {}", e);
+            let _ = db::requests::mark_failed(pool, request_id, &msg).await;
+            return Err(msg);
+        }
+    };
+
+    // 2. Decrypt credentials
+    let key_bytes = match config.encryption_key_bytes() {
+        Ok(k) => k,
+        Err(e) => {
+            let msg = format!("internal: encryption key error: {}", e);
+            let _ = db::requests::mark_failed(pool, request_id, "internal: encryption key error").await;
+            let _ = db::audit::insert(pool, request_id, "FAILED", actor_id, Some("encryption key error"), None, ip_address.as_deref()).await;
+            return Err(msg);
+        }
+    };
+
+    let credentials = match decrypt_credentials(&db_conn.encrypted_credentials, &key_bytes) {
+        Ok(c) => c,
+        Err(e) => {
+            let msg = format!("failed to decrypt database credentials: {}", e);
+            let _ = db::requests::mark_failed(pool, request_id, "failed to decrypt database credentials").await;
+            let _ = db::audit::insert(pool, request_id, "FAILED", actor_id, Some("credential decryption failed"), None, ip_address.as_deref()).await;
+            return Err(msg);
+        }
+    };
+
+    // 3. INSERT EXECUTING audit BEFORE SQL execution
+    let _ = db::audit::insert(
+        pool,
+        request_id,
+        "EXECUTING",
+        actor_id,
+        None,
+        None,
+        ip_address.as_deref(),
+    )
+    .await;
+
+    // 4. Execute SQL
+    let db_timeout_secs = db_conn.timeout_secs as u64;
+    let global_cap = config.sql_execution_timeout_secs;
+    let effective_timeout = Duration::from_secs(db_timeout_secs.min(global_cap));
+
+    match executor::execute_sql(
+        &db_conn.db_type.to_string(),
+        sql,
+        &credentials,
+        &db_conn.host,
+        db_conn.port,
+        &db_conn.database_name,
+        db_conn.schema_name.as_deref(),
+        effective_timeout,
+    )
+    .await
+    {
+        Ok(result) => {
+            let _ = db::requests::mark_executed(pool, request_id, result.rows_affected).await;
+            let _ = db::audit::insert(
+                pool,
+                request_id,
+                "EXECUTED",
+                actor_id,
+                None,
+                Some(result.rows_affected),
+                ip_address.as_deref(),
+            )
+            .await;
+
+            let _ = notification_tx.send(Notification {
+                notification_type: NotificationType::RequestExecuted,
+                request_id,
+                created_by: Some(request_created_by),
+                database_name: Some(db_conn.name.clone()),
+                actor_id: Some(actor_id),
+                rows_affected: Some(result.rows_affected),
+                detail: None,
+            });
+
+            tracing::info!(%request_id, rows_affected = result.rows_affected, "SQL executed successfully");
+            Ok(result)
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            let _ = db::requests::mark_failed(pool, request_id, &error_msg).await;
+            let _ = db::audit::insert(
+                pool,
+                request_id,
+                "FAILED",
+                actor_id,
+                Some(&error_msg),
+                None,
+                ip_address.as_deref(),
+            )
+            .await;
+
+            let _ = notification_tx.send(Notification {
+                notification_type: NotificationType::RequestFailed,
+                request_id,
+                created_by: Some(request_created_by),
+                database_name: Some(db_conn.name.clone()),
+                actor_id: Some(actor_id),
+                rows_affected: None,
+                detail: Some(error_msg.clone()),
+            });
+
+            tracing::error!(%request_id, error = %error_msg, "SQL execution failed");
+            Err(error_msg)
+        }
+    }
+}
+
+// ── Async SQL Execution (legacy — kept for reference) ──────────────────
+
+/// Thực thi SQL bất đồng bộ sau khi approve (legacy).
+///
+/// Được giữ lại để tham khảo — trước đây chạy trong `tokio::spawn` để không
+/// block HTTP response. Đã thay bằng [`execute_sql_sync`] để trả kết quả
+/// execution trực tiếp trong approve response.
+///
+/// # Note
+/// Hàm này không trả giá trị — kết quả được cập nhật vào DB và broadcast
+/// qua notification channel.
+#[allow(dead_code)]
 async fn execute_sql_async(
     pool: &sqlx::PgPool,
     config: &crate::config::Config,

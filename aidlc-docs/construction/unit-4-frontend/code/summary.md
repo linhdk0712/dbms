@@ -36,7 +36,7 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | `pages/maker/NewRequest.svelte` | `/requests/new` | Maker | Form tạo SQL request (save draft / submit) |
 | `pages/maker/MyRequests.svelte` | `/requests` | Maker | List requests + filter + actions (submit/cancel) |
 | `pages/checker/PendingList.svelte` | `/approvals` | Checker | List requests chờ duyệt |
-| `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + approve/reject |
+| `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + validate SQL + approve/reject (validate bắt buộc trước approve) |
 | `pages/admin/Databases.svelte` | `/admin/databases` | Admin | CRUD databases, test connection |
 | `pages/admin/Users.svelte` | `/admin/users` | Admin | Manage users + grant/revoke permissions |
 
@@ -68,6 +68,7 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | Auth Guard | Reactive check in App.svelte, redirect to `/login` if no token |
 | API Client | Centralized `api/index.js` — auto JWT attach, 401 auto-logout |
 | WebSocket | Auto-connect on login, auto-reconnect, toast notifications |
+| SQL Validation | Checker phải validate SQL (EXPLAIN) thành công trước khi approve — hiển thị execution plan + performance warnings |
 | Role-based UI | Dashboard shows quick links per role, pages enforce role via API |
 | Responsive | DaisyUI grid + responsive breakpoints |
 | Dark/Light theme | DaisyUI themes configured, toggle via `data-theme` |

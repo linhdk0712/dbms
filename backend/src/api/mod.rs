@@ -62,6 +62,7 @@ pub fn build_router(state: AppState) -> Router {
         // Approvals (Checker)
         .route("/api/v1/approvals/pending", get(approvals::list_pending))
         .route("/api/v1/approvals/:id", get(approvals::get_detail))
+        .route("/api/v1/approvals/:id/validate", post(approvals::validate))
         .route("/api/v1/approvals/:id/approve", post(approvals::approve))
         .route("/api/v1/approvals/:id/reject", post(approvals::reject))
         // Databases (Admin)

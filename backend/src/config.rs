@@ -23,6 +23,8 @@ pub struct Config {
     pub port: u16,
     /// Thư mục chứa log files (default: "./logs")
     pub log_dir: String,
+    /// Tắt TLS khi kết nối đến target database (chỉ dùng cho development/testing)
+    pub disable_target_db_tls: bool,
 }
 
 impl Config {
@@ -74,6 +76,10 @@ impl Config {
                 .parse::<u16>()
                 .context("PORT must be a valid port number")?,
             log_dir: std::env::var("LOG_DIR").unwrap_or_else(|_| "./logs".to_string()),
+            disable_target_db_tls: std::env::var("DISABLE_TARGET_DB_TLS")
+                .unwrap_or_else(|_| "false".to_string())
+                .parse::<bool>()
+                .unwrap_or(false),
         })
     }
 

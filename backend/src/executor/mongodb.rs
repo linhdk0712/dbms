@@ -80,14 +80,26 @@ impl DatabaseExecutor for MongoExecutor {
 }
 
 /// Build MongoDB connection URI.
-/// Format: mongodb://user:pass@host:port/?tls=true
+/// Format: mongodb://user:pass@host:port/?tls=true&authSource=admin
+/// Nếu env var DISABLE_TARGET_DB_TLS=true → bỏ tls (chỉ cho dev/testing).
 fn build_connection_uri(username: &str, password: &str, host: &str, port: i32) -> String {
+    let tls_disabled = std::env::var("DISABLE_TARGET_DB_TLS")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+
+    let tls_param = if tls_disabled {
+        "tls=false"
+    } else {
+        "tls=true"
+    };
+
     format!(
-        "mongodb://{}:{}@{}:{}/?tls=true&authSource=admin",
+        "mongodb://{}:{}@{}:{}/?{}&authSource=admin",
         urlencoding::encode(username),
         urlencoding::encode(password),
         host,
-        port
+        port,
+        tls_param
     )
 }
 
@@ -259,6 +271,8 @@ mod tests {
 
     #[test]
     fn test_build_connection_uri() {
+        // Đảm bảo TLS enabled (default)
+        std::env::remove_var("DISABLE_TARGET_DB_TLS");
         let uri = build_connection_uri("admin", "s3cr3t!", "mongo.company.com", 27017);
         assert_eq!(
             uri,
@@ -267,7 +281,16 @@ mod tests {
     }
 
     #[test]
+    fn test_build_connection_uri_tls_disabled() {
+        std::env::set_var("DISABLE_TARGET_DB_TLS", "true");
+        let uri = build_connection_uri("admin", "pass", "localhost", 27017);
+        assert!(uri.contains("tls=false"));
+        std::env::remove_var("DISABLE_TARGET_DB_TLS");
+    }
+
+    #[test]
     fn test_build_connection_uri_special_chars() {
+        std::env::remove_var("DISABLE_TARGET_DB_TLS");
         let uri = build_connection_uri("user@domain", "p@ss/word", "10.0.1.5", 27018);
         assert!(uri.contains("user%40domain"));
         assert!(uri.contains("p%40ss%2Fword"));

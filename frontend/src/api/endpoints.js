@@ -37,6 +37,7 @@ export const REQUESTS = {
 export const APPROVALS = {
   PENDING: "/approvals/pending",
   GET: (id) => `/approvals/${id}`,
+  VALIDATE: (id) => `/approvals/${id}/validate`,
   APPROVE: (id) => `/approvals/${id}/approve`,
   REJECT: (id) => `/approvals/${id}/reject`,
 };
