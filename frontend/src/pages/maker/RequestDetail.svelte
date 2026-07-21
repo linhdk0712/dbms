@@ -4,6 +4,7 @@
   import api from "../../api/index.js";
   import StatusBadge from "../../components/StatusBadge.svelte";
   import SqlEditor from "../../components/SqlEditor.svelte";
+  import AiAnalysisPanel from "../../components/AiAnalysisPanel.svelte";
 
   export let params = {};
 
@@ -190,6 +191,13 @@
           <p class="font-semibold">Lý do từ chối:</p>
           <p>{request.rejection_reason}</p>
         </div>
+      </div>
+    {/if}
+
+    <!-- AI Analysis Panel — hiển thị cho PENDING, DRAFT (sau khi có SQL) -->
+    {#if request.status === "PENDING" || request.status === "DRAFT"}
+      <div class="mb-4">
+        <AiAnalysisPanel requestId={id} autoLoad={request.status === "PENDING"} />
       </div>
     {/if}
 

@@ -26,6 +26,7 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | `components/Navbar.svelte` | Navigation bar với user dropdown, roles display, logout |
 | `components/StatusBadge.svelte` | Color-coded status badge cho request statuses |
 | `components/Toast.svelte` | Real-time notification toasts từ WebSocket |
+| `components/AiAnalysisPanel.svelte` | AI SQL analysis panel — risk score, performance/security/best practices issues, cost estimation, suggested SQL |
 
 ### Pages
 | File | Route | Role | Mô tả |
@@ -69,6 +70,7 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | API Client | Centralized `api/index.js` — auto JWT attach, 401 auto-logout |
 | WebSocket | Auto-connect on login, auto-reconnect, toast notifications |
 | SQL Validation | Checker phải validate SQL (EXPLAIN) thành công trước khi approve — hiển thị execution plan + performance warnings |
+| AI SQL Analysis | AiAnalysisPanel trong ReviewDetail — phân tích AI cho risk score, performance, security, best practices, cost estimation, suggested SQL |
 | Role-based UI | Dashboard shows quick links per role, pages enforce role via API |
 | Responsive | DaisyUI grid + responsive breakpoints |
 | Dark/Light theme | DaisyUI themes configured, toggle via `data-theme` |

@@ -8,7 +8,7 @@
 
 ## Tổng quan
 
-Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (PostgreSQL), credential encryption, tất cả API handlers (Maker, Checker, Admin, Dashboard), và WebSocket realtime notification. Đây là unit lớn nhất — chứa toàn bộ Maker-Checker workflow.
+Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (PostgreSQL), credential encryption, tất cả API handlers (Maker, Checker, Admin, Dashboard), WebSocket realtime notification, và AI SQL analysis module (LLM-powered). Đây là unit lớn nhất — chứa toàn bộ Maker-Checker workflow.
 
 ---
 
@@ -22,6 +22,14 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | `db/audit.rs` | Insert audit log (append-only), fetch by request_id/actor_id. `insert_admin_action()` cho admin actions không gắn request (request_id = NULL). Actions: CREATED, SUBMITTED, APPROVED, REJECTED, EXECUTED, FAILED, CANCELLED, EXECUTING, ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
 | `db/databases.rs` | CRUD cho database_connections: create, get, list, update, update_credentials |
 | `db/permissions.rs` | check_permission, grant, revoke, list_user_permissions, list_database_users |
+
+### Backend — AI Module
+| File | Mô tả |
+|------|-------|
+| `ai/mod.rs` | Module root: exports `llm_client`, `prompt_builder`, `schema_introspector`. Định nghĩa `AiAnalysisResponse`, `Recommendation`, `SecurityIssue`, `CostEstimation` response models. `AiError` enum (ServiceUnavailable, Timeout, ParseError, RateLimited, Disabled, SchemaError). `AiConfig` struct + `AiProvider` enum (OpenAI / AwsBedrock). `AiRateLimiter` struct — sliding window rate limiter per user (max N requests/minute, dùng `Arc<Mutex<HashMap<Uuid, Vec<Instant>>>>`). `AiCache` struct — in-memory cache kết quả AI analysis per request (key = request_id + hash(sql_content), TTL-based expiry, auto-cleanup khi >500 entries). Config load từ env vars (`AI_ENABLED`, `AI_PROVIDER`, `AI_OPENAI_API_KEY`, `AI_OPENAI_MODEL`, `AI_OPENAI_BASE_URL`, `AI_BEDROCK_REGION`, `AI_BEDROCK_MODEL_ID`, `AI_ANALYSIS_TIMEOUT_SECS`, `AI_MAX_TOKENS`, `AI_RATE_LIMIT_PER_USER`) |
+| `ai/llm_client.rs` | `LlmClient` struct: HTTP client cho OpenAI Chat Completions API. `analyze(system_prompt, user_prompt)` → `Result<String, AiError>`. JSON response format, low temperature (0.1). AWS Bedrock placeholder. |
+| `ai/prompt_builder.rs` | Xây dựng prompt tối ưu cho LLM: `build_system_prompt()` (role + JSON output format), `build_user_prompt(sql, schema, db_type)` (schema context + sanitized SQL + analysis instructions), `sanitize_sql_literals(sql)` (thay string literals bằng `'***'` để không leak data nhạy cảm). 5 unit tests cho sanitization, 3 tests cho format_row_count, 2 tests cho prompt building. |
+| `ai/schema_introspector.rs` | Introspect schema từ database đích: `extract_table_names(sql)` (regex-based table name extraction), `introspect_postgres()` (information_schema + pg_class + pg_index), `introspect_mysql()` (information_schema.COLUMNS + STATISTICS), `introspect_oracle()` (placeholder), `introspect_mongodb()` (schema-less, returns empty). Models: `SchemaContext`, `TableInfo`, `ColumnInfo`, `IndexInfo`. 9 unit tests cho table extraction. |
 
 ### Backend — Executor
 | File | Mô tả |
@@ -38,6 +46,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | File | Mô tả |
 |------|-------|
 | `api/requests.rs` | Maker: POST create, GET list, GET detail, POST submit, POST cancel |
+| `api/analysis.rs` | AI SQL Analysis: POST analyze — LLM-powered phân tích SQL (security issues, recommendations, cost estimation). Access: Maker (own requests) + Checker (PENDING requests) |
 | `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ **synchronous** SQL exec — result returned in response), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. Approve response includes `execution_result` with `success`/`rows_affected` or `error`. |
 | `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET/POST/DELETE permissions |
@@ -78,6 +87,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | GET | `/api/v1/requests/:id` | Maker | request detail |
 | POST | `/api/v1/requests/:id/submit` | Maker | submit DRAFT→PENDING |
 | POST | `/api/v1/requests/:id/cancel` | Maker | cancel PENDING→CANCELLED |
+| POST | `/api/v1/requests/:id/analyze` | Maker/Checker | AI SQL analysis (LLM) |
 | GET | `/api/v1/approvals/pending` | Checker | pending list |
 | GET | `/api/v1/approvals/:id` | Checker | approval detail |
 | POST | `/api/v1/approvals/:id/approve` | Checker | approve + execute |
@@ -114,10 +124,10 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 
 ## Kiểm thử
 
-**41/41 tests pass**, gồm:
+**60/60 tests pass**, gồm:
 - Unit 1 tests: 14 (state machine, PBT, error codes, config)
 - Unit 2 tests: 21 (JWT, middleware, extractors)
-- Unit 3 tests: 6 (encryption roundtrip, nonce uniqueness, wrong key, tampered data, unicode, empty)
+- Unit 3 tests: 25 (encryption: 6, prompt_builder: 10, schema_introspector: 9)
 
 ---
 

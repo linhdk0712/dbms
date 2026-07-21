@@ -162,6 +162,11 @@ const requests = {
   async audit(id) {
     return apiFetch(REQUESTS.AUDIT(id));
   },
+
+  /** AI phân tích SQL — performance, security, best practices, cost */
+  async analyze(id) {
+    return apiFetch(REQUESTS.ANALYZE(id), { method: "POST" });
+  },
 };
 
 // ─── Approvals (sử dụng endpoint approvals thay vì requests) ──────────────────

@@ -53,6 +53,14 @@ pub enum AppError {
     #[error("encryption error: {0}")]
     Encryption(String),
 
+    // ── 503 Service Unavailable ────────────────────────────────────────
+    #[error("AI service unavailable: {0}")]
+    AiUnavailable(String),
+
+    // ── 429 Too Many Requests ──────────────────────────────────────────
+    #[error("AI rate limited: too many analysis requests. Try again later.")]
+    AiRateLimited,
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -88,6 +96,17 @@ impl IntoResponse for AppError {
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "internal server error".to_string(),
                 )
+            }
+
+            // 503 — AI service unavailable
+            AppError::AiUnavailable(msg) => {
+                tracing::warn!(error = %msg, "AI service unavailable");
+                (StatusCode::SERVICE_UNAVAILABLE, msg.clone())
+            }
+
+            // 429 — AI rate limited
+            AppError::AiRateLimited => {
+                (StatusCode::TOO_MANY_REQUESTS, self.to_string())
             }
         };
 

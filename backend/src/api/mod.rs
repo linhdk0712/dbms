@@ -1,3 +1,4 @@
+pub mod analysis;
 pub mod approvals;
 pub mod audit;
 pub mod auth;
@@ -57,6 +58,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/requests/:id/submit", post(requests::submit_request))
         .route("/api/v1/requests/:id/cancel", post(requests::cancel_request))
         .route("/api/v1/requests/:id/clone", post(requests::clone_request))
+        // AI Analysis
+        .route("/api/v1/requests/:id/analyze", post(analysis::analyze_request))
         // Audit
         .route("/api/v1/requests/:id/audit", get(audit::get_request_audit))
         // Approvals (Checker)

@@ -63,6 +63,9 @@ urlencoding = "2"
 # SQL analysis
 regex = "1"
 
+# HTTP client (cho AI LLM API calls)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+
 # MongoDB
 mongodb = "3"
 

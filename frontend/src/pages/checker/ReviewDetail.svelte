@@ -4,6 +4,7 @@
   import api from "../../api/index.js";
   import StatusBadge from "../../components/StatusBadge.svelte";
   import SqlEditor from "../../components/SqlEditor.svelte";
+  import AiAnalysisPanel from "../../components/AiAnalysisPanel.svelte";
 
   export let params = {};
 
@@ -199,6 +200,11 @@
     {/if}
 
     {#if request.status === "PENDING"}
+      <!-- AI Analysis Panel — auto-load khi Checker mở review -->
+      <div class="mb-6">
+        <AiAnalysisPanel requestId={id} autoLoad={true} />
+      </div>
+
       <div class="flex flex-col gap-4">
         <!-- Step 1: Validate SQL -->
         <div class="card bg-base-200 shadow">

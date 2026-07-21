@@ -2,6 +2,7 @@ use openidconnect::core::CoreClient;
 use sqlx::PgPool;
 use tokio::sync::broadcast;
 
+use crate::ai::{AiCache, AiConfig, AiRateLimiter};
 use crate::api::auth::OidcSessionStore;
 use crate::config::Config;
 use crate::models::notification::Notification;
@@ -12,6 +13,12 @@ use crate::models::notification::Notification;
 pub struct AppState {
     pub db: PgPool,
     pub config: Config,
+    /// Cấu hình AI analysis module.
+    pub ai_config: AiConfig,
+    /// Rate limiter per user cho AI analysis.
+    pub ai_rate_limiter: AiRateLimiter,
+    /// Cache kết quả AI analysis per request.
+    pub ai_cache: AiCache,
     /// Kênh broadcast cho realtime notification qua WebSocket.
     pub notification_tx: broadcast::Sender<Notification>,
     /// OIDC client — None nếu OIDC provider không available lúc startup.
@@ -26,9 +33,15 @@ impl AppState {
         config: Config,
         notification_tx: broadcast::Sender<Notification>,
     ) -> Self {
+        let ai_config = AiConfig::from_env();
+        let ai_rate_limiter = AiRateLimiter::new(ai_config.rate_limit_per_user);
+        let ai_cache = AiCache::new(600); // 10 minutes TTL
         Self {
             db,
             config,
+            ai_config,
+            ai_rate_limiter,
+            ai_cache,
             notification_tx,
             oidc_client: None,
             oidc_sessions: crate::api::auth::new_session_store(),

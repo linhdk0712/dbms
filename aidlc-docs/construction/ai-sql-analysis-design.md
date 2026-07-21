@@ -438,18 +438,16 @@ Không cần thêm dependency — dùng `apiFetch` hiện có.
 
 ## Roadmap triển khai
 
-| Phase | Nội dung | Effort | Priority |
-|-------|----------|--------|----------|
-| 1 | `ai/` module + OpenAI client + basic prompt + response types | 2-3 ngày | High |
-| 2 | Schema introspection (PostgreSQL + MySQL) | 1-2 ngày | High |
-| 3 | API endpoint `POST /requests/:id/analyze` + auth/access control | 1 ngày | High |
-| 4 | Frontend: AI Analysis Panel component + integration | 1-2 ngày | High |
-| 5 | Oracle + MongoDB schema introspection | 1 ngày | Medium |
-| 6 | SQL sanitization (strip string literals) | 0.5 ngày | High |
-| 7 | Rate limiting + caching (cache kết quả per request) | 1 ngày | Medium |
-| 8 | AWS Bedrock alternative provider | 1 ngày | Low |
-
-**Tổng estimate: ~8-12 ngày**
+| Phase | Nội dung | Effort | Priority | Status |
+|-------|----------|--------|----------|--------|
+| 1 | `ai/` module + OpenAI client + basic prompt + response types | 2-3 ngày | High | ✅ DONE |
+| 2 | Schema introspection (PostgreSQL + MySQL) | 1-2 ngày | High | ✅ DONE |
+| 3 | API endpoint `POST /requests/:id/analyze` + auth/access control | 1 ngày | High | ✅ DONE |
+| 4 | Frontend: AI Analysis Panel component + integration | 1-2 ngày | High | ✅ DONE |
+| 5 | Oracle + MongoDB schema introspection | 1 ngày | Medium | ✅ DONE (placeholder) |
+| 6 | SQL sanitization (strip string literals) | 0.5 ngày | High | ✅ DONE |
+| 7 | Rate limiting + caching (cache kết quả per request) | 1 ngày | Medium | ✅ DONE |
+| 8 | AWS Bedrock alternative provider | 1 ngày | Low | 🔲 TODO |
 
 ---
 
