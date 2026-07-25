@@ -3,10 +3,12 @@
   import { push } from "svelte-spa-router";
   import api from "../../api/index.js";
   import SqlEditor from "../../components/SqlEditor.svelte";
+  import CrInput from "../../components/CrInput.svelte";
 
   let description = "";
   let sqlContent = "";
   let databaseId = "";
+  let crUrl = "";
   let databases = [];
   let loading = false;
   let error = null;
@@ -41,6 +43,7 @@
         sql_content: sqlContent.trim(),
         database_id: databaseId,
         submit,
+        cr_url: crUrl.trim() || undefined,
       });
       push("/requests");
     } catch (e) {
@@ -77,6 +80,10 @@
         <option value={db.id}>{db.name} ({db.db_type} - {db.host})</option>
       {/each}
     </select>
+  </div>
+
+  <div class="mb-4">
+    <CrInput bind:value={crUrl} />
   </div>
 
   <div class="form-control mb-6">

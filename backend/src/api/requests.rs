@@ -16,6 +16,7 @@ use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
+/// Body cho endpoint tạo SQL request mới (`POST /api/v1/requests`).
 #[derive(Debug, Deserialize, Validate)]
 pub struct CreateRequestBody {
     #[validate(length(min = 1, max = 500, message = "description must be 1-500 characters"))]
@@ -26,8 +27,12 @@ pub struct CreateRequestBody {
     /// Nếu true → status PENDING ngay, nếu false → DRAFT
     #[serde(default)]
     pub submit: bool,
+    /// URL từ ManageEngine ServiceDesk Plus (optional).
+    /// Nếu cung cấp, request sẽ được link với CR tương ứng.
+    pub cr_url: Option<String>,
 }
 
+/// Body cho endpoint cập nhật request đang DRAFT (`PATCH /api/v1/requests/:id`).
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateRequestBody {
     #[validate(length(min = 1, max = 500, message = "description must be 1-500 characters"))]
@@ -36,6 +41,7 @@ pub struct UpdateRequestBody {
     pub sql_content: String,
 }
 
+/// Query parameters cho endpoint danh sách requests (`GET /api/v1/requests`).
 #[derive(Debug, Deserialize)]
 pub struct ListRequestsQuery {
     pub status: Option<String>,
@@ -45,9 +51,13 @@ pub struct ListRequestsQuery {
     pub per_page: i64,
 }
 
+/// Giá trị mặc định cho page number (bắt đầu từ 1).
 fn default_page() -> i64 { 1 }
+
+/// Giá trị mặc định cho số lượng items trên mỗi trang.
 fn default_per_page() -> i64 { 20 }
 
+/// Response DTO cho request trong danh sách (không bao gồm `sql_content`).
 #[derive(Debug, Serialize)]
 pub struct RequestResponse {
     pub id: Uuid,
@@ -64,6 +74,8 @@ pub struct RequestResponse {
     pub submitted_at: Option<String>,
 }
 
+/// Response DTO cho chi tiết request (bao gồm `sql_content`).
+/// Chỉ trả về cho Maker sở hữu request.
 #[derive(Debug, Serialize)]
 pub struct RequestDetailResponse {
     pub id: Uuid,
@@ -81,12 +93,14 @@ pub struct RequestDetailResponse {
     pub submitted_at: Option<String>,
 }
 
+/// Wrapper response cho danh sách có phân trang.
 #[derive(Debug, Serialize)]
 pub struct PaginatedResponse<T: Serialize> {
     pub data: Vec<T>,
     pub pagination: PaginationMeta,
 }
 
+/// Metadata phân trang: page hiện tại, tổng số items, tổng số pages.
 #[derive(Debug, Serialize)]
 pub struct PaginationMeta {
     pub page: i64,
@@ -117,6 +131,49 @@ pub async fn create_request(
         return Err(AppError::DatabasePermissionDenied { db_id: body.database_id });
     }
 
+    // Resolve CR nếu có URL
+    let cr_id = if let Some(ref cr_url) = body.cr_url {
+        let cr_number = crate::integrations::manageengine::parse_cr_url(cr_url)
+            .map_err(|e| AppError::ValidationError(e.to_string()))?;
+
+        // Kiểm tra CR đã tồn tại chưa, nếu chưa thì tạo mới
+        let existing = db::change_requests::get_by_cr_number(&state.db, &cr_number)
+            .await
+            .map_err(AppError::Database)?;
+
+        match existing {
+            Some(cr) => Some(cr.id),
+            None => {
+                // Tạo CR mới (fetch metadata nếu ManageEngine enabled)
+                let detail = if state.config.manageengine.enabled {
+                    let client = crate::integrations::manageengine::ManageEngineClient::new(
+                        &state.config.manageengine,
+                    );
+                    client.get_change(&cr_number).await.ok()
+                } else {
+                    None
+                };
+
+                let cr = db::change_requests::create(
+                    &state.db,
+                    &cr_number,
+                    cr_url,
+                    detail.as_ref().and_then(|d| d.title.as_deref()),
+                    detail.as_ref().and_then(|d| d.status.as_deref()),
+                    detail.as_ref().and_then(|d| d.scheduled_start_time),
+                    detail.as_ref().and_then(|d| d.scheduled_end_time),
+                    claims.user_id,
+                )
+                .await
+                .map_err(AppError::Database)?;
+
+                Some(cr.id)
+            }
+        }
+    } else {
+        None
+    };
+
     // Tạo request
     let request = db::requests::create_request(
         &state.db,
@@ -125,6 +182,7 @@ pub async fn create_request(
         body.database_id,
         claims.user_id,
         body.submit,
+        cr_id,
     )
     .await
     .map_err(AppError::Database)?;
@@ -384,6 +442,8 @@ pub async fn clone_request(
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
+/// Chuyển đổi `SqlRequest` thành `RequestResponse` (không bao gồm `sql_content`).
+/// Dùng cho danh sách requests để tránh expose nội dung SQL.
 fn to_request_response(req: &crate::models::request::SqlRequest) -> RequestResponse {
     RequestResponse {
         id: req.id,
@@ -401,6 +461,8 @@ fn to_request_response(req: &crate::models::request::SqlRequest) -> RequestRespo
     }
 }
 
+/// Chuyển đổi `SqlRequest` thành `RequestDetailResponse` (bao gồm `sql_content`).
+/// Dùng cho endpoint chi tiết, chỉ trả về cho Maker sở hữu request.
 fn to_detail_response(req: &crate::models::request::SqlRequest) -> RequestDetailResponse {
     RequestDetailResponse {
         id: req.id,

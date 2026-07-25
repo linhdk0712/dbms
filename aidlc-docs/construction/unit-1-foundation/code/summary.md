@@ -49,6 +49,7 @@ Unit 1 cung cấp nền tảng cho toàn hệ thống SECS: database schema, dom
 | `006_create_indexes.sql` | Indexes cho các query phổ biến |
 | `007_gap_fixes.sql` | `request_approvals` (new), ALTER `database_connections` + `sql_requests` + `audit_log` |
 | `008_expand_audit_actions.sql` | Expand audit_log action constraint: thêm ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
+| `009_create_change_requests.sql` | `change_requests` (CR metadata cache từ ManageEngine), ALTER `sql_requests` thêm `cr_id` FK |
 
 ### Frontend Skeleton
 | File | Mô tả |

@@ -2,6 +2,7 @@ pub mod analysis;
 pub mod approvals;
 pub mod audit;
 pub mod auth;
+pub mod change_requests;
 pub mod dashboard;
 pub mod databases;
 pub mod health;
@@ -77,6 +78,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/databases/:id", patch(databases::update_database))
         .route("/api/v1/databases/:id/test", post(databases::test_connection))
         .route("/api/v1/databases/:id/credentials", patch(databases::update_credentials))
+        // Change Requests (CR)
+        .route("/api/v1/change-requests", post(change_requests::create_cr))
+        .route("/api/v1/change-requests", get(change_requests::list_crs))
+        .route("/api/v1/change-requests/:id", get(change_requests::get_cr_detail))
+        .route("/api/v1/change-requests/:id/sync", post(change_requests::sync_cr))
+        .route("/api/v1/change-requests/:id", delete(change_requests::delete_cr))
         // Users (Admin)
         .route("/api/v1/users", get(users::list_users))
         .route("/api/v1/users/:user_id", get(users::get_user))

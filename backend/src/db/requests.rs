@@ -14,6 +14,7 @@ pub async fn create_request(
     database_id: Uuid,
     created_by: Uuid,
     submit: bool,
+    cr_id: Option<Uuid>,
 ) -> Result<SqlRequest, sqlx::Error> {
     let id = Uuid::new_v4();
     let status = if submit { "PENDING" } else { "DRAFT" };
@@ -22,13 +23,13 @@ pub async fn create_request(
     if submit {
         // Snapshot approval_levels_required from database_connections at submit time (Req 10.8)
         sqlx::query_as::<_, SqlRequest>(
-            r#"INSERT INTO sql_requests (id, description, sql_content, status, database_id, created_by, submitted_at, approval_levels_required, created_at, updated_at)
+            r#"INSERT INTO sql_requests (id, description, sql_content, status, database_id, created_by, submitted_at, approval_levels_required, cr_id, created_at, updated_at)
                VALUES ($1, $2, $3, $4, $5, $6, $7,
                        (SELECT approval_levels_required FROM database_connections WHERE id = $5),
-                       NOW(), NOW())
+                       $8, NOW(), NOW())
                RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                          rejection_reason, executed_at, rows_affected, execution_error,
-                         created_at, updated_at, submitted_at, approval_levels_required"#,
+                         created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
         )
         .bind(id)
         .bind(description)
@@ -37,16 +38,17 @@ pub async fn create_request(
         .bind(database_id)
         .bind(created_by)
         .bind(submitted_at)
+        .bind(cr_id)
         .fetch_one(pool)
         .await
     } else {
         // DRAFT — approval_levels_required defaults to 1, will be snapshotted on submit
         sqlx::query_as::<_, SqlRequest>(
-            r#"INSERT INTO sql_requests (id, description, sql_content, status, database_id, created_by, submitted_at, created_at, updated_at)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+            r#"INSERT INTO sql_requests (id, description, sql_content, status, database_id, created_by, submitted_at, cr_id, created_at, updated_at)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
                RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                          rejection_reason, executed_at, rows_affected, execution_error,
-                         created_at, updated_at, submitted_at, approval_levels_required"#,
+                         created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
         )
         .bind(id)
         .bind(description)
@@ -55,6 +57,7 @@ pub async fn create_request(
         .bind(database_id)
         .bind(created_by)
         .bind(submitted_at)
+        .bind(cr_id)
         .fetch_one(pool)
         .await
     }
@@ -174,7 +177,7 @@ pub async fn submit_request(pool: &PgPool, id: Uuid) -> Result<SqlRequest, sqlx:
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(id)
     .fetch_one(pool)
@@ -193,7 +196,7 @@ pub async fn approve_request(
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(id)
     .bind(approved_by)
@@ -213,7 +216,7 @@ pub async fn reject_request(
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(id)
     .bind(rejection_reason)
@@ -229,7 +232,7 @@ pub async fn cancel_request(pool: &PgPool, id: Uuid) -> Result<SqlRequest, sqlx:
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(id)
     .fetch_one(pool)
@@ -286,7 +289,7 @@ pub async fn update_draft(
            WHERE id = $1 AND status = 'DRAFT'
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(id)
     .bind(description)
@@ -311,7 +314,7 @@ pub async fn clone_request(
            WHERE id = $3
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
     )
     .bind(new_id)
     .bind(created_by)

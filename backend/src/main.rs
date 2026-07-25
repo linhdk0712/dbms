@@ -5,6 +5,7 @@ mod config;
 mod db;
 mod error;
 mod executor;
+mod integrations;
 mod models;
 mod state;
 mod ws;

@@ -39,6 +39,14 @@ pub enum AppError {
     #[error("permission denied: user does not have access to database {db_id}")]
     DatabasePermissionDenied { db_id: Uuid },
 
+    // ── 409 Conflict ───────────────────────────────────────────────────
+    #[error("CR window violation: execution blocked outside maintenance window ({cr_number}: {window_start} — {window_end})")]
+    CrWindowViolation {
+        cr_number: String,
+        window_start: chrono::DateTime<chrono::Utc>,
+        window_end: chrono::DateTime<chrono::Utc>,
+    },
+
     // ── 404 Not Found ──────────────────────────────────────────────────
     #[error("resource not found")]
     NotFound,
@@ -83,6 +91,10 @@ impl IntoResponse for AppError {
 
             AppError::Forbidden | AppError::DatabasePermissionDenied { .. } => {
                 (StatusCode::FORBIDDEN, self.to_string())
+            }
+
+            AppError::CrWindowViolation { .. } => {
+                (StatusCode::CONFLICT, self.to_string())
             }
 
             AppError::NotFound => (StatusCode::NOT_FOUND, "resource not found".to_string()),

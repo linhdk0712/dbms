@@ -23,6 +23,7 @@ import {
   DATABASES,
   USERS,
   DASHBOARD,
+  CHANGE_REQUESTS,
 } from "./endpoints.js";
 
 // ─── Base Config ───────────────────────────────────────────────────────────────
@@ -113,10 +114,12 @@ const auth = {
 
 const requests = {
   /** Tạo request mới (DRAFT hoặc submit luôn) */
-  async create({ description, sql_content, database_id, submit = false }) {
+  async create({ description, sql_content, database_id, submit = false, cr_url }) {
+    const body = { description, sql_content, database_id, submit };
+    if (cr_url) body.cr_url = cr_url;
     return apiFetch(REQUESTS.CREATE, {
       method: "POST",
-      body: { description, sql_content, database_id, submit },
+      body,
     });
   },
 
@@ -278,6 +281,41 @@ const dashboard = {
   },
 };
 
+// ─── Change Requests ───────────────────────────────────────────────────────────
+
+const changeRequests = {
+  /** Tạo/link CR từ ManageEngine URL */
+  async create(cr_url) {
+    return apiFetch(CHANGE_REQUESTS.CREATE, {
+      method: "POST",
+      body: { cr_url },
+    });
+  },
+
+  /** Danh sách CRs (pagination) */
+  async list({ page = 1, per_page = 20 } = {}) {
+    const params = new URLSearchParams();
+    params.set("page", page);
+    params.set("per_page", per_page);
+    return apiFetch(`${CHANGE_REQUESTS.LIST}?${params}`);
+  },
+
+  /** Chi tiết CR */
+  async get(id) {
+    return apiFetch(CHANGE_REQUESTS.GET(id));
+  },
+
+  /** Re-sync metadata từ ManageEngine */
+  async sync(id) {
+    return apiFetch(CHANGE_REQUESTS.SYNC(id), { method: "POST" });
+  },
+
+  /** Xóa CR (Admin only) */
+  async delete(id) {
+    return apiFetch(CHANGE_REQUESTS.DELETE(id), { method: "DELETE" });
+  },
+};
+
 // ─── Export tập trung ──────────────────────────────────────────────────────────
 
 export const api = {
@@ -287,6 +325,7 @@ export const api = {
   databases,
   users,
   dashboard,
+  changeRequests,
 };
 
 export default api;

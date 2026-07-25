@@ -24,7 +24,7 @@
   let loading = false;
   let error = null;
 
-  // Severity badge colors
+  /** @type {Record<string, string>} Map severity level → DaisyUI badge class */
   const severityColors = {
     critical: "badge-error",
     high: "badge-error",
@@ -32,20 +32,33 @@
     low: "badge-info",
   };
 
-  // Risk score color
+  /**
+   * Trả về CSS class cho risk score text color.
+   * @param {number} score - Điểm risk từ 1–10
+   * @returns {string} Tailwind text color class
+   */
   function getRiskColor(score) {
     if (score >= 8) return "text-error";
     if (score >= 5) return "text-warning";
     return "text-success";
   }
 
-  // Risk score progress color
+  /**
+   * Trả về CSS class cho progress bar dựa trên risk score.
+   * @param {number} score - Điểm risk từ 1–10
+   * @returns {string} DaisyUI progress color class
+   */
   function getRiskProgressClass(score) {
     if (score >= 8) return "progress-error";
     if (score >= 5) return "progress-warning";
     return "progress-success";
   }
 
+  /**
+   * Gọi API phân tích AI cho request hiện tại.
+   * Cập nhật state: loading, analysis, error.
+   * @returns {Promise<void>}
+   */
   async function runAnalysis() {
     if (!requestId) return;
     loading = true;
@@ -61,12 +74,16 @@
     }
   }
 
+  /**
+   * Copy text vào clipboard của người dùng.
+   * @param {string} text - Nội dung cần copy
+   */
   function copyToClipboard(text) {
     navigator.clipboard.writeText(text);
   }
 
-  // Auto-load if configured
-  $: if (autoLoad && requestId && !analysis && !loading) {
+  // Auto-load if configured — dừng nếu đã có lỗi (tránh retry loop vô hạn)
+  $: if (autoLoad && requestId && !analysis && !loading && !error) {
     runAnalysis();
   }
 </script>

@@ -16,6 +16,7 @@
         <li class="menu-title mt-4"><span>Maker</span></li>
         <li><a href="#/requests/new">Tạo request mới</a></li>
         <li><a href="#/requests">Requests của tôi</a></li>
+        <li><a href="#/change-requests">Change Requests</a></li>
       {/if}
 
       {#if isChecker}

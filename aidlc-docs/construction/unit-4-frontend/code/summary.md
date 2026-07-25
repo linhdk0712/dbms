@@ -24,9 +24,11 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | File | Mô tả |
 |------|-------|
 | `components/Navbar.svelte` | Navigation bar với user dropdown, roles display, logout |
+| `components/Sidebar.svelte` | Role-based sidebar navigation — Maker/Checker/Admin menu items |
 | `components/StatusBadge.svelte` | Color-coded status badge cho request statuses |
 | `components/Toast.svelte` | Real-time notification toasts từ WebSocket |
 | `components/AiAnalysisPanel.svelte` | AI SQL analysis panel — risk score, performance/security/best practices issues, cost estimation, suggested SQL |
+| `components/MaintenanceWindow.svelte` | Hiển thị maintenance window (start/end time) với status badge: Trong window / Chưa đến / Đã hết |
 
 ### Pages
 | File | Route | Role | Mô tả |
@@ -36,6 +38,7 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | `pages/Dashboard.svelte` | `/` | Any | Stats overview + quick links theo role |
 | `pages/maker/NewRequest.svelte` | `/requests/new` | Maker | Form tạo SQL request (save draft / submit) |
 | `pages/maker/MyRequests.svelte` | `/requests` | Maker | List requests + filter + actions (submit/cancel) |
+| `pages/maker/ChangeRequests.svelte` | `/change-requests` | Maker | List change requests (ManageEngine integration) |
 | `pages/checker/PendingList.svelte` | `/approvals` | Checker | List requests chờ duyệt |
 | `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + validate SQL + approve/reject (validate bắt buộc trước approve) |
 | `pages/admin/Databases.svelte` | `/admin/databases` | Admin | CRUD databases, test connection |
@@ -99,11 +102,28 @@ Hash-based routing (svelte-spa-router)
 #/                   → Dashboard.svelte (authenticated)
 #/requests/new       → NewRequest.svelte (Maker)
 #/requests           → MyRequests.svelte (Maker)
+#/change-requests    → ChangeRequests.svelte (Maker)
 #/approvals          → PendingList.svelte (Checker)
 #/approvals/:id      → ReviewDetail.svelte (Checker)
 #/admin/databases    → Databases.svelte (Admin)
 #/admin/users        → Users.svelte (Admin)
 ```
+
+---
+
+## API Endpoints Registry
+
+File `api/endpoints.js` định nghĩa tập trung tất cả endpoint paths:
+
+| Module | Mô tả |
+|--------|--------|
+| `AUTH` | SSO/OIDC login, callback, logout, me |
+| `REQUESTS` | Maker CRUD, submit, cancel, clone, audit, analyze |
+| `APPROVALS` | Checker pending list, validate, approve, reject |
+| `DATABASES` | Admin CRUD, test connection, my-permissions |
+| `USERS` | Admin user management, permissions grant/revoke |
+| `DASHBOARD` | Role-aware statistics |
+| `CHANGE_REQUESTS` | CR list, create, detail, sync, delete (ManageEngine integration) |
 
 ---
 

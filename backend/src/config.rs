@@ -25,6 +25,17 @@ pub struct Config {
     pub log_dir: String,
     /// Tắt TLS khi kết nối đến target database (chỉ dùng cho development/testing)
     pub disable_target_db_tls: bool,
+    /// ManageEngine ServiceDesk Plus integration
+    pub manageengine: ManageEngineConfig,
+}
+
+/// Cấu hình ManageEngine ServiceDesk Plus integration.
+/// Nếu `enabled = false`, CR features vẫn hoạt động nhưng không fetch metadata từ API.
+#[derive(Debug, Clone)]
+pub struct ManageEngineConfig {
+    pub enabled: bool,
+    pub base_url: String,
+    pub auth_token: String,
 }
 
 impl Config {
@@ -80,6 +91,16 @@ impl Config {
                 .unwrap_or_else(|_| "false".to_string())
                 .parse::<bool>()
                 .unwrap_or(false),
+            manageengine: ManageEngineConfig {
+                enabled: std::env::var("MANAGEENGINE_ENABLED")
+                    .unwrap_or_else(|_| "false".to_string())
+                    .parse::<bool>()
+                    .unwrap_or(false),
+                base_url: std::env::var("MANAGEENGINE_BASE_URL")
+                    .unwrap_or_default(),
+                auth_token: std::env::var("MANAGEENGINE_AUTH_TOKEN")
+                    .unwrap_or_default(),
+            },
         })
     }
 

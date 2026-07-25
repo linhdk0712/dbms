@@ -5,6 +5,8 @@
   import StatusBadge from "../../components/StatusBadge.svelte";
   import SqlEditor from "../../components/SqlEditor.svelte";
   import AiAnalysisPanel from "../../components/AiAnalysisPanel.svelte";
+  import CrBadge from "../../components/CrBadge.svelte";
+  import MaintenanceWindow from "../../components/MaintenanceWindow.svelte";
 
   export let params = {};
 
@@ -14,6 +16,7 @@
   let rejectionReason = "";
   let actionLoading = false;
   let executionResult = null;
+  let crInfo = null; // CR metadata if request has cr_id
 
   // Validation state
   let validating = false;
@@ -25,6 +28,14 @@
   onMount(async () => {
     try {
       request = await api.approvals.get(id);
+      // Fetch CR info nếu request có cr_id
+      if (request.cr_id) {
+        try {
+          crInfo = await api.changeRequests.get(request.cr_id);
+        } catch (_) {
+          crInfo = null;
+        }
+      }
     } catch (e) {
       error = e.error || "Không tìm thấy request.";
     } finally {
@@ -141,6 +152,28 @@
         <p>{request.description}</p>
       </div>
     </div>
+
+    <!-- CR Info (nếu request được gắn với Change Request) -->
+    {#if crInfo}
+      <div class="card bg-base-100 shadow mb-6 border-l-4 border-info">
+        <div class="card-body py-3">
+          <div class="flex items-center gap-3 flex-wrap">
+            <CrBadge crNumber={crInfo.cr_number} crUrl={crInfo.cr_url} />
+            {#if crInfo.title}
+              <span class="text-sm">{crInfo.title}</span>
+            {/if}
+            {#if crInfo.status}
+              <span class="badge badge-outline badge-xs">{crInfo.status}</span>
+            {/if}
+          </div>
+          {#if crInfo.scheduled_start_time && crInfo.scheduled_end_time}
+            <div class="mt-2">
+              <MaintenanceWindow startTime={crInfo.scheduled_start_time} endTime={crInfo.scheduled_end_time} />
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
 
     <div class="card bg-base-100 shadow mb-6">
       <div class="card-body">

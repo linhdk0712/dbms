@@ -223,6 +223,10 @@ pub async fn approve(
 
     if total_approvals >= request.approval_levels_required as i64 {
         // All required approvals met → transition to APPROVED and trigger execution
+
+        // Check maintenance window (CR integration)
+        crate::api::change_requests::check_maintenance_window(&state.db, request.cr_id).await?;
+
         let _updated = db::requests::approve_request(&state.db, id, claims.user_id)
             .await
             .map_err(AppError::Database)?;

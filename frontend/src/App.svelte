@@ -17,6 +17,7 @@
   import ReviewDetail from "./pages/checker/ReviewDetail.svelte";
   import AdminDatabases from "./pages/admin/Databases.svelte";
   import AdminUsers from "./pages/admin/Users.svelte";
+  import ChangeRequests from "./pages/maker/ChangeRequests.svelte";
 
   const routes = {
     "/login": Login,
@@ -25,6 +26,7 @@
     "/requests/new": NewRequest,
     "/requests": MyRequests,
     "/requests/:id": RequestDetail,
+    "/change-requests": ChangeRequests,
     "/approvals": PendingList,
     "/approvals/:id": ReviewDetail,
     "/admin/databases": AdminDatabases,

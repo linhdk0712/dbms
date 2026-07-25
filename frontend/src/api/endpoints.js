@@ -120,3 +120,21 @@ export const USERS = {
 export const DASHBOARD = {
   STATS: "/dashboard",
 };
+
+// ─── Change Requests (CR) ──────────────────────────────────────────────────────
+
+/**
+ * Change Request endpoint paths (ManageEngine integration).
+ * @property {string} LIST - List all change requests
+ * @property {string} CREATE - Create/link a new change request from URL
+ * @property {function(string): string} GET - Get CR detail by ID
+ * @property {function(string): string} SYNC - Re-sync CR metadata from ManageEngine
+ * @property {function(string): string} DELETE - Delete CR (Admin only)
+ */
+export const CHANGE_REQUESTS = {
+  LIST: "/change-requests",
+  CREATE: "/change-requests",
+  GET: (id) => `/change-requests/${id}`,
+  SYNC: (id) => `/change-requests/${id}/sync`,
+  DELETE: (id) => `/change-requests/${id}`,
+};

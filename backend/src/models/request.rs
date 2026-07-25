@@ -78,6 +78,8 @@ pub struct SqlRequest {
     /// Số cấp approval cần thiết — snapshot từ database_connections khi submit (Req 10.8).
     /// Default 1 cho backward compatibility.
     pub approval_levels_required: i32,
+    /// Change Request liên kết (optional) — dùng cho traceability golive.
+    pub cr_id: Option<Uuid>,
 }
 
 #[cfg(test)]

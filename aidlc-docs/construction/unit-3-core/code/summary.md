@@ -22,6 +22,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | `db/audit.rs` | Insert audit log (append-only), fetch by request_id/actor_id. `insert_admin_action()` cho admin actions không gắn request (request_id = NULL). Actions: CREATED, SUBMITTED, APPROVED, REJECTED, EXECUTED, FAILED, CANCELLED, EXECUTING, ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
 | `db/databases.rs` | CRUD cho database_connections: create, get, list, update, update_credentials |
 | `db/permissions.rs` | check_permission, grant, revoke, list_user_permissions, list_database_users |
+| `db/change_requests.rs` | CRUD cho bảng change_requests (CR integration): create (upsert on cr_number), get_by_id, get_by_cr_number, list_all (paginated), count_all, update_from_sync (refresh metadata từ ManageEngine), delete, count_requests (đếm sql_requests gắn CR) |
 
 ### Backend — AI Module
 | File | Mô tả |
@@ -45,9 +46,10 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 ### Backend — API Handlers
 | File | Mô tả |
 |------|-------|
-| `api/requests.rs` | Maker: POST create, GET list, GET detail, POST submit, POST cancel |
+| `api/requests.rs` | Maker: POST create (inline CR resolution — parse `cr_url`, lookup/create CR, pass `cr_id`), GET list, GET detail, POST submit, POST cancel |
 | `api/analysis.rs` | AI SQL Analysis: POST analyze — LLM-powered phân tích SQL (security issues, recommendations, cost estimation). Access: Maker (own requests) + Checker (PENDING requests) |
 | `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ **synchronous** SQL exec — result returned in response), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. Approve response includes `execution_result` with `success`/`rows_affected` or `error`. |
+| `api/change_requests.rs` | CR Integration: POST create (parse URL + fetch ManageEngine metadata), GET list (paginated), GET detail, POST sync (re-fetch metadata), DELETE (Admin only). Includes `check_maintenance_window()` helper for enforce time window trước khi execute SQL. |
 | `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET/POST/DELETE permissions |
 | `api/dashboard.rs` | GET dashboard stats (aggregate counts) |
@@ -88,6 +90,11 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | POST | `/api/v1/requests/:id/submit` | Maker | submit DRAFT→PENDING |
 | POST | `/api/v1/requests/:id/cancel` | Maker | cancel PENDING→CANCELLED |
 | POST | `/api/v1/requests/:id/analyze` | Maker/Checker | AI SQL analysis (LLM) |
+| POST | `/api/v1/change-requests` | Maker/Checker | create CR from URL |
+| GET | `/api/v1/change-requests` | Maker/Checker | list CRs (paginated) |
+| GET | `/api/v1/change-requests/:id` | Maker/Checker | CR detail + request count |
+| POST | `/api/v1/change-requests/:id/sync` | Maker/Checker | re-sync metadata from ManageEngine |
+| DELETE | `/api/v1/change-requests/:id` | Admin | delete CR (unlinks requests) |
 | GET | `/api/v1/approvals/pending` | Checker | pending list |
 | GET | `/api/v1/approvals/:id` | Checker | approval detail |
 | POST | `/api/v1/approvals/:id/approve` | Checker | approve + execute |
