@@ -1,6 +1,8 @@
 <script>
   import { onMount } from "svelte";
   import api from "../../api/index.js";
+  import Skeleton from "../../components/Skeleton.svelte";
+  import { toastStore } from "../../stores/toast.js";
 
   const STORAGE_KEY = "secs_pending_filters";
 
@@ -13,7 +15,10 @@
   let searchText = "";
   let sortOrder = "newest";
 
-  // Restore preferences from sessionStorage
+  /**
+   * @description Khôi phục filter/sort preferences từ sessionStorage.
+   * Đọc giá trị đã lưu trước đó để giữ trạng thái filter khi navigate giữa các trang.
+   */
   function restorePreferences() {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -27,7 +32,10 @@
     }
   }
 
-  // Persist preferences to sessionStorage
+  /**
+   * @description Lưu filter/sort preferences vào sessionStorage.
+   * Được gọi mỗi khi selectedDatabase hoặc sortOrder thay đổi.
+   */
   function savePreferences() {
     try {
       sessionStorage.setItem(
@@ -85,14 +93,31 @@
 </script>
 
 <div class="p-6">
-  <h2 class="text-2xl font-bold mb-6">Requests chờ duyệt</h2>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold">Requests chờ duyệt</h2>
+    <p class="text-sm text-base-content/60 mt-1">Review và phê duyệt các SQL request từ Maker</p>
+  </div>
 
   {#if loading}
-    <div class="flex justify-center py-10">
-      <span class="loading loading-spinner"></span>
+    <!-- Skeleton loading -->
+    <div class="space-y-4">
+      <div class="flex gap-3 mb-4">
+        <div class="h-8 w-40 bg-base-300 rounded animate-pulse"></div>
+        <div class="h-8 w-64 bg-base-300 rounded animate-pulse"></div>
+        <div class="h-8 w-36 bg-base-300 rounded animate-pulse"></div>
+      </div>
+      {#each Array(4) as _}
+        <Skeleton type="card" />
+      {/each}
     </div>
   {:else if error}
-    <div class="alert alert-error"><span>{error}</span></div>
+    <div class="alert alert-error">
+      <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>{error}</span>
+      <button class="btn btn-sm btn-ghost" on:click={() => location.reload()}>Thử lại</button>
+    </div>
   {:else}
     <!-- Toolbar: filters, search, sort -->
     <div class="flex flex-wrap gap-3 items-center mb-4">
@@ -128,19 +153,26 @@
     </div>
 
     {#if requests.length === 0}
-      <div class="text-center py-10 opacity-60">
-        Không có request nào chờ duyệt.
+      <div class="text-center py-16">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-base-content/20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p class="text-base-content/50 text-lg mb-2">Tất cả đã xong!</p>
+        <p class="text-base-content/40 text-sm">Không có request nào chờ duyệt.</p>
       </div>
     {:else if filteredRequests.length === 0}
-      <div class="text-center py-10 opacity-60">
-        Không tìm thấy request phù hợp.
+      <div class="text-center py-10">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto text-base-content/20 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <p class="text-base-content/50">Không tìm thấy request phù hợp.</p>
       </div>
     {:else}
       <div class="grid gap-4">
         {#each filteredRequests as req}
           <a
             href="#/approvals/{req.id}"
-            class="card bg-base-100 shadow hover:shadow-lg transition-shadow"
+            class="card bg-base-100 shadow-sm border border-base-300 hover:shadow-md transition-shadow"
           >
             <div class="card-body">
               <h3 class="card-title text-base">{req.description}</h3>

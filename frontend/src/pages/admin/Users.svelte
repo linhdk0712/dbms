@@ -3,6 +3,9 @@
   import { get } from "svelte/store";
   import api from "../../api/index.js";
   import { authStore } from "../../stores/auth.js";
+  import { toastStore } from "../../stores/toast.js";
+  import ConfirmModal from "../../components/ConfirmModal.svelte";
+  import Skeleton from "../../components/Skeleton.svelte";
 
   let users = [];
   let databases = [];
@@ -22,17 +25,13 @@
   let deactivateTarget = null;
   let statusUpdating = false;
 
-  // Notification
-  let notification = null;
-  let notificationTimeout = null;
-
-  function showNotification(message, type = "success") {
-    if (notificationTimeout) clearTimeout(notificationTimeout);
-    notification = { message, type };
-    notificationTimeout = setTimeout(() => {
-      notification = null;
-    }, 3000);
-  }
+  // Confirm modal state
+  let confirmOpen = false;
+  let confirmAction = null;
+  let confirmTitle = "";
+  let confirmMessage = "";
+  let confirmVariant = "primary";
+  let confirmLoading = false;
 
   onMount(async () => {
     try {
@@ -44,6 +43,10 @@
     }
   });
 
+  /**
+   * Hiển thị panel quyền và roles cho user được chọn.
+   * @param {Object} user - User object cần hiển thị thông tin quyền
+   */
   async function showPermissions(user) {
     selectedUser = user;
     // Initialize role checkboxes from user's roles
@@ -59,6 +62,10 @@
     }
   }
 
+  /**
+   * Lưu thay đổi roles cho user đang được chọn.
+   * Gửi request cập nhật roles lên API và refresh lại danh sách users.
+   */
   async function handleSaveRoles() {
     if (!selectedUser) return;
     savingRoles = true;
@@ -74,108 +81,155 @@
       users = await api.users.list();
       // Update selectedUser reference
       selectedUser = users.find((u) => u.id === selectedUser.id) || null;
-      showNotification("Cập nhật roles thành công!");
+      toastStore.success("Cập nhật roles thành công!");
     } catch (e) {
-      showNotification(e.error || "Lỗi cập nhật roles.", "error");
+      toastStore.error(e.error || "Lỗi cập nhật roles.");
     } finally {
       savingRoles = false;
     }
   }
 
+  /**
+   * Cấp quyền truy cập database cho user đang được chọn.
+   * Sử dụng grantDbId để xác định database cần cấp quyền.
+   */
   async function handleGrant() {
     if (!grantDbId || !selectedUser) return;
     try {
       await api.users.grantPermission(selectedUser.id, grantDbId);
       grantDbId = "";
+      toastStore.success("Đã cấp quyền.");
       showPermissions(selectedUser);
     } catch (e) {
-      alert(e.error || "Lỗi cấp quyền.");
+      toastStore.error(e.error || "Lỗi cấp quyền.");
     }
   }
 
+  /**
+   * Mở confirm modal để xác nhận thu hồi quyền database.
+   * @param {string} databaseId - ID của database cần thu hồi quyền
+   */
   async function handleRevoke(databaseId) {
-    if (!confirm("Thu hồi quyền này?")) return;
+    confirmTitle = "Thu hồi quyền";
+    confirmMessage = "Bạn chắc chắn muốn thu hồi quyền database này?";
+    confirmVariant = "warning";
+    confirmAction = () => doRevoke(databaseId);
+    confirmOpen = true;
+  }
+
+  /**
+   * Thực hiện thu hồi quyền database sau khi user xác nhận.
+   * @param {string} databaseId - ID của database cần thu hồi quyền
+   */
+  async function doRevoke(databaseId) {
+    confirmLoading = true;
     try {
       await api.users.revokePermission(selectedUser.id, databaseId);
+      confirmOpen = false;
+      toastStore.success("Đã thu hồi quyền.");
       showPermissions(selectedUser);
     } catch (e) {
-      alert(e.error || "Lỗi thu hồi.");
+      toastStore.error(e.error || "Lỗi thu hồi.");
+    } finally {
+      confirmLoading = false;
     }
   }
 
   // --- Activate / Deactivate ---
 
+  /**
+   * Xử lý toggle trạng thái active/inactive của user.
+   * Kiểm tra self-deactivation, hiển thị confirm dialog nếu deactivate.
+   * @param {Object} user - User object cần thay đổi trạng thái
+   * @param {Event} event - DOM event (để stopPropagation)
+   */
   function handleToggleStatus(user, event) {
     event.stopPropagation();
     const currentUser = get(authStore)?.user;
 
-    // Self-deactivation check
     if (user.is_active && currentUser && currentUser.id === user.id) {
-      showNotification("Không thể vô hiệu hóa tài khoản của chính bạn", "error");
+      toastStore.error("Không thể vô hiệu hóa tài khoản của chính bạn");
       return;
     }
 
     if (user.is_active) {
-      // Deactivate → show confirmation dialog
-      deactivateTarget = user;
-      document.getElementById("deactivate-modal")?.showModal();
+      // Deactivate → show confirmation
+      confirmTitle = "Vô hiệu hóa user";
+      confirmMessage = `Bạn có chắc muốn vô hiệu hóa tài khoản của ${user.display_name} (${user.email})?`;
+      confirmVariant = "warning";
+      confirmAction = () => doStatusUpdate(user, false);
+      confirmOpen = true;
     } else {
-      // Activate → do immediately
       doStatusUpdate(user, true);
     }
   }
 
-  async function confirmDeactivate() {
-    if (!deactivateTarget) return;
-    document.getElementById("deactivate-modal")?.close();
-    await doStatusUpdate(deactivateTarget, false);
-    deactivateTarget = null;
-  }
-
-  function cancelDeactivate() {
-    document.getElementById("deactivate-modal")?.close();
-    deactivateTarget = null;
-  }
-
+  /**
+   * Thực hiện cập nhật trạng thái active/inactive cho user.
+   * @param {Object} user - User object cần cập nhật
+   * @param {boolean} activate - true để kích hoạt, false để vô hiệu hóa
+   */
   async function doStatusUpdate(user, activate) {
+    if (confirmOpen) confirmLoading = true;
     statusUpdating = true;
     try {
       await api.users.update(user.id, { is_active: activate });
-      // Refresh user list
       users = await api.users.list();
-      // Update selectedUser reference if same user
       if (selectedUser && selectedUser.id === user.id) {
         selectedUser = users.find((u) => u.id === user.id) || null;
       }
-      showNotification(activate ? "Đã kích hoạt user." : "Đã vô hiệu hóa user.");
+      confirmOpen = false;
+      toastStore.success(activate ? "Đã kích hoạt user." : "Đã vô hiệu hóa user.");
     } catch (e) {
-      showNotification(e.error || "Lỗi cập nhật trạng thái.", "error");
+      toastStore.error(e.error || "Lỗi cập nhật trạng thái.");
     } finally {
       statusUpdating = false;
+      confirmLoading = false;
     }
+  }
+
+  /**
+   * Callback khi user nhấn xác nhận trong ConfirmModal.
+   * Thực thi action đã được gán trước đó (revoke hoặc deactivate).
+   */
+  function onConfirm() {
+    if (confirmAction) confirmAction();
+  }
+
+  /**
+   * Callback khi user hủy ConfirmModal. Reset trạng thái modal.
+   */
+  function onCancelModal() {
+    confirmOpen = false;
+    confirmAction = null;
+    confirmLoading = false;
   }
 </script>
 
 <div class="p-6">
-  <h2 class="text-2xl font-bold mb-6">Quản lý Users</h2>
+  <div class="mb-6">
+    <h2 class="text-2xl font-bold">Quản lý Users</h2>
+    <p class="text-sm text-base-content/60 mt-1">Phân quyền role và database cho từng user</p>
+  </div>
 
-  <!-- Notification toast -->
-  {#if notification}
-    <div
-      class="toast toast-top toast-end z-50"
-    >
-      <div class="alert {notification.type === 'error' ? 'alert-error' : 'alert-success'}">
-        <span>{notification.message}</span>
-      </div>
+  <!-- Notification toast đã chuyển sang global toastStore -->
+
+  {#if error}
+    <div class="alert alert-error mb-4">
+      <span>{error}</span>
+      <button class="btn btn-sm btn-ghost" on:click={() => location.reload()}>Thử lại</button>
     </div>
   {/if}
 
-  {#if error}
-    <div class="alert alert-error mb-4"><span>{error}</span></div>
-  {/if}
-
   {#if loading}
-    <div class="flex justify-center py-10"><span class="loading loading-spinner"></span></div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="space-y-2">
+        {#each Array(5) as _}
+          <Skeleton type="card" />
+        {/each}
+      </div>
+      <Skeleton type="card" />
+    </div>
   {:else}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <!-- User list -->
@@ -313,22 +367,14 @@
     </div>
   {/if}
 
-  <!-- Deactivate Confirmation Modal -->
-  <dialog id="deactivate-modal" class="modal">
-    <div class="modal-box">
-      <h3 class="font-bold text-lg">Xác nhận vô hiệu hóa</h3>
-      {#if deactivateTarget}
-        <p class="py-4">
-          Bạn có chắc muốn vô hiệu hóa tài khoản của <strong>{deactivateTarget.display_name}</strong> ({deactivateTarget.email})?
-        </p>
-      {/if}
-      <div class="modal-action">
-        <button class="btn btn-ghost" on:click={cancelDeactivate}>Hủy</button>
-        <button class="btn btn-warning" on:click={confirmDeactivate}>Vô hiệu hóa</button>
-      </div>
-    </div>
-    <form method="dialog" class="modal-backdrop">
-      <button on:click={cancelDeactivate}>close</button>
-    </form>
-  </dialog>
+  <!-- Confirm Modal (replaces old deactivate-modal) -->
+  <ConfirmModal
+    bind:open={confirmOpen}
+    title={confirmTitle}
+    message={confirmMessage}
+    variant={confirmVariant}
+    loading={confirmLoading}
+    on:confirm={onConfirm}
+    on:cancel={onCancelModal}
+  />
 </div>

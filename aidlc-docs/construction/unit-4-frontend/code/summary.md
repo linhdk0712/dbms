@@ -19,16 +19,19 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 |------|-------|
 | `stores/auth.js` | Auth store (đã có từ Unit 1) — JWT + user info, localStorage persist |
 | `stores/notifications.js` | WebSocket notification store — auto-connect, auto-reconnect, broadcast |
+| `stores/toast.js` | Toast notification store — success/error/warning/info messages, auto-dismiss |
 
 ### Components
 | File | Mô tả |
 |------|-------|
 | `components/Navbar.svelte` | Navigation bar với user dropdown, roles display, logout |
 | `components/Sidebar.svelte` | Role-based sidebar navigation — Maker/Checker/Admin menu items |
-| `components/StatusBadge.svelte` | Color-coded status badge cho request statuses |
+| `components/StatusBadge.svelte` | Color-coded status badge với SVG icon, size prop (sm/md/lg), Vietnamese labels, ARIA accessibility |
 | `components/Toast.svelte` | Real-time notification toasts từ WebSocket |
 | `components/AiAnalysisPanel.svelte` | AI SQL analysis panel — risk score, performance/security/best practices issues, cost estimation, suggested SQL |
 | `components/MaintenanceWindow.svelte` | Hiển thị maintenance window (start/end time) với status badge: Trong window / Chưa đến / Đã hết |
+| `components/ConfirmModal.svelte` | Reusable confirmation dialog — hỗ trợ variant (primary/error/warning/success/info), loading state, keyboard (Escape), accessible (aria-labelledby/describedby) |
+| `components/Skeleton.svelte` | Skeleton loading placeholder — hỗ trợ nhiều type (stat, table, card, text), configurable rows/cols cho table variant |
 
 ### Pages
 | File | Route | Role | Mô tả |

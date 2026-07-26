@@ -1,20 +1,43 @@
 <script>
   import { authStore } from "../stores/auth.js";
   import { push } from "svelte-spa-router";
+  import { toastStore } from "../stores/toast.js";
   import api from "../api/index.js";
 
+  // Theme: "light" | "dark" | "system"
+  let themeMode = "system";
   let isDark = false;
 
   // Khôi phục theme từ localStorage
   if (typeof localStorage !== "undefined") {
-    isDark = localStorage.getItem("secs_theme") === "dark";
+    themeMode = localStorage.getItem("secs_theme_mode") || "system";
+    applyTheme();
+  }
+
+  function applyTheme() {
+    if (themeMode === "system") {
+      isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    } else {
+      isDark = themeMode === "dark";
+    }
     document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
   }
 
-  function toggleTheme() {
-    isDark = !isDark;
-    document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
-    localStorage.setItem("secs_theme", isDark ? "dark" : "light");
+  function cycleTheme() {
+    // Cycle: light → dark → system → light ...
+    if (themeMode === "light") themeMode = "dark";
+    else if (themeMode === "dark") themeMode = "system";
+    else themeMode = "light";
+
+    localStorage.setItem("secs_theme_mode", themeMode);
+    applyTheme();
+  }
+
+  // Listen for OS theme changes when in system mode
+  if (typeof window !== "undefined") {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      if (themeMode === "system") applyTheme();
+    });
   }
 
   async function handleLogout() {
@@ -24,44 +47,75 @@
       // Ignore errors — logout client-side anyway
     }
     authStore.logout();
+    toastStore.info("Đã đăng xuất.");
     push("/login");
   }
 </script>
 
-<div class="navbar bg-base-100 shadow-md">
+<div class="navbar bg-base-100 border-b border-base-300 sticky top-0 z-40">
   <div class="flex-1">
-    <a href="#/" class="btn btn-ghost text-xl">SECS</a>
+    <a href="#/" class="btn btn-ghost gap-2 text-xl font-bold tracking-tight">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+      </svg>
+      <span>SECS</span>
+    </a>
   </div>
 
   {#if $authStore}
-    <div class="flex-none gap-2">
-      <!-- Theme toggle -->
-      <label class="swap swap-rotate btn btn-ghost btn-circle">
-        <input type="checkbox" bind:checked={isDark} on:change={toggleTheme} />
-        <svg class="swap-on fill-current w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21.64,13a1,1,0,0,0-1.05-.14,8.05,8.05,0,0,1-3.37.73A8.15,8.15,0,0,1,9.08,5.49a8.59,8.59,0,0,1,.25-2A1,1,0,0,0,8,2.36,10.14,10.14,0,1,0,22,14.05,1,1,0,0,0,21.64,13Z"/></svg>
-        <svg class="swap-off fill-current w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M5.64,17l-.71.71a1,1,0,0,0,0,1.41,1,1,0,0,0,1.41,0l.71-.71A1,1,0,0,0,5.64,17ZM5,12a1,1,0,0,0-1-1H3a1,1,0,0,0,0,2H4A1,1,0,0,0,5,12Zm7-7a1,1,0,0,0,1-1V3a1,1,0,0,0-2,0V4A1,1,0,0,0,12,5ZM5.64,7.05a1,1,0,0,0,.7.29,1,1,0,0,0,.71-.29,1,1,0,0,0,0-1.41l-.71-.71A1,1,0,0,0,4.93,6.34Zm12,.29a1,1,0,0,0,.7-.29l.71-.71a1,1,0,1,0-1.41-1.41L17,5.64a1,1,0,0,0,0,1.41A1,1,0,0,0,17.66,7.34ZM21,11H20a1,1,0,0,0,0,2h1a1,1,0,0,0,0-2Zm-9,8a1,1,0,0,0-1,1v1a1,1,0,0,0,2,0V20A1,1,0,0,0,12,19ZM18.36,17A1,1,0,0,0,17,18.36l.71.71a1,1,0,0,0,1.41,0,1,1,0,0,0,0-1.41ZM12,6.5A5.5,5.5,0,1,0,17.5,12,5.51,5.51,0,0,0,12,6.5Zm0,9A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z"/></svg>
-      </label>
+    <div class="flex-none gap-1">
+      <!-- Theme toggle (3 states: light/dark/system) -->
+      <div class="tooltip tooltip-bottom" data-tip="Theme: {themeMode}">
+        <button class="btn btn-ghost btn-circle btn-sm" on:click={cycleTheme} aria-label="Chuyển theme ({themeMode})">
+          {#if themeMode === "light"}
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          {:else if themeMode === "dark"}
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          {:else}
+            <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+          {/if}
+        </button>
+      </div>
 
+      <!-- User dropdown -->
       <div class="dropdown dropdown-end">
-        <div tabindex="0" role="button" class="btn btn-ghost btn-circle avatar placeholder">
-          <div class="bg-primary text-primary-content rounded-full w-10">
-            <span class="text-sm">{$authStore.user?.display_name?.charAt(0) || "U"}</span>
+        <button class="btn btn-ghost btn-circle avatar placeholder" aria-label="Menu người dùng">
+          <div class="bg-primary text-primary-content rounded-full w-9">
+            <span class="text-sm font-medium">{$authStore.user?.display_name?.charAt(0)?.toUpperCase() || "U"}</span>
           </div>
-        </div>
-        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-10 w-52 p-2 shadow">
-          <li class="menu-title">
-            <span>{$authStore.user?.display_name || "User"}</span>
+        </button>
+        <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+        <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-50 w-56 p-2 shadow-lg border border-base-300">
+          <li class="menu-title px-3 pt-1">
+            <span class="text-sm font-semibold">{$authStore.user?.display_name || "User"}</span>
           </li>
-          <li><span class="text-xs opacity-60">{$authStore.user?.email}</span></li>
+          <li class="px-3 pb-1">
+            <span class="text-xs opacity-60 pointer-events-none">{$authStore.user?.email}</span>
+          </li>
           {#if $authStore.user?.roles}
-            <li>
-              <span class="text-xs">
-                {$authStore.user.roles.join(", ")}
+            <li class="px-3 pb-2">
+              <span class="flex gap-1 pointer-events-none">
+                {#each $authStore.user.roles as role}
+                  <span class="badge badge-xs badge-outline">{role}</span>
+                {/each}
               </span>
             </li>
           {/if}
           <div class="divider my-0"></div>
-          <li><button on:click={handleLogout}>Đăng xuất</button></li>
+          <li>
+            <button on:click={handleLogout} class="text-error">
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Đăng xuất
+            </button>
+          </li>
         </ul>
       </div>
     </div>

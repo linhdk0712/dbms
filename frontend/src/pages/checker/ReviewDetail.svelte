@@ -7,6 +7,9 @@
   import AiAnalysisPanel from "../../components/AiAnalysisPanel.svelte";
   import CrBadge from "../../components/CrBadge.svelte";
   import MaintenanceWindow from "../../components/MaintenanceWindow.svelte";
+  import ConfirmModal from "../../components/ConfirmModal.svelte";
+  import Skeleton from "../../components/Skeleton.svelte";
+  import { toastStore } from "../../stores/toast.js";
 
   export let params = {};
 
@@ -16,19 +19,26 @@
   let rejectionReason = "";
   let actionLoading = false;
   let executionResult = null;
-  let crInfo = null; // CR metadata if request has cr_id
+  let crInfo = null;
 
   // Validation state
   let validating = false;
-  let validationResult = null; // { valid, execution_plan, warnings, error }
-  let validated = false; // true khi validate thành công
+  let validationResult = null;
+  let validated = false;
+
+  // Confirm modal state
+  let confirmOpen = false;
+  let confirmAction = null;
+  let confirmTitle = "";
+  let confirmMessage = "";
+  let confirmVariant = "primary";
+  let confirmLoading = false;
 
   $: id = params.id;
 
   onMount(async () => {
     try {
       request = await api.approvals.get(id);
-      // Fetch CR info nếu request có cr_id
       if (request.cr_id) {
         try {
           crInfo = await api.changeRequests.get(request.cr_id);
@@ -44,9 +54,8 @@
   });
 
   /**
-   * Validates the SQL content of the request against the target database.
-   * Calls the backend validate API and updates validation state (validationResult, validated).
-   * Must succeed before the Checker can approve/execute.
+   * Validates the SQL content of the current request before approval.
+   * Updates validationResult and validated state based on API response.
    */
   async function handleValidate() {
     validating = true;
@@ -57,77 +66,112 @@
       const result = await api.approvals.validate(id);
       validationResult = result;
       validated = result.valid === true;
-      if (!result.valid) {
-        error = null; // Error will be shown in validation result section
-      }
     } catch (e) {
-      error = e.error || "Không thể validate SQL.";
+      toastStore.error(e.error || "Không thể validate SQL.");
     } finally {
       validating = false;
     }
   }
 
   /**
-   * Approves the pending request and triggers SQL execution on the target database.
-   * Requires prior successful validation. Handles both partial (multi-level) and
-   * final approvals. On final approval, displays execution result inline.
+   * Opens the confirmation modal for approving the request.
+   * Requires SQL validation to pass before allowing approval.
+   * Adjusts confirmation message for multi-level approval flows.
    */
-  async function handleApprove() {
+  function handleApprove() {
     if (!validated) {
-      error = "Phải validate SQL thành công trước khi Approve & Execute.";
+      toastStore.warning("Phải validate SQL thành công trước khi Approve & Execute.");
       return;
     }
     const isMultiLevel = request.approval_levels_required > 1;
     const isFinalApproval = isMultiLevel && (request.approval_count || 0) + 1 >= request.approval_levels_required;
-    const confirmMsg = isMultiLevel && !isFinalApproval
+    confirmTitle = "Approve & Execute";
+    confirmMessage = isMultiLevel && !isFinalApproval
       ? `Xác nhận APPROVE request này? (${(request.approval_count || 0) + 1}/${request.approval_levels_required} approvals)`
-      : "Xác nhận APPROVE request này? SQL sẽ được thực thi ngay.";
-    if (!confirm(confirmMsg)) return;
-    actionLoading = true;
+      : "Xác nhận APPROVE request này? SQL sẽ được thực thi ngay trên database đích.";
+    confirmVariant = "success";
+    confirmAction = doApprove;
+    confirmOpen = true;
+  }
+
+  /**
+   * Executes the approval action via API.
+   * On final approval, displays execution result inline.
+   * On intermediate approval (multi-level), redirects to approvals list.
+   */
+  async function doApprove() {
+    confirmLoading = true;
     error = null;
     executionResult = null;
     try {
       const result = await api.approvals.approve(id);
+      confirmOpen = false;
       if (result.execution_result) {
-        // Final approval with execution — show result inline
         executionResult = result.execution_result;
         request.status = result.status;
+        if (result.execution_result.success) {
+          toastStore.success("SQL đã thực thi thành công.");
+        } else {
+          toastStore.error("SQL thực thi thất bại.");
+        }
       } else {
-        // Partial approval — navigate back to list
+        toastStore.success("Request đã được approve.");
         push("/approvals");
       }
     } catch (e) {
-      error = e.error || "Không thể approve.";
+      toastStore.error(e.error || "Không thể approve.");
     } finally {
-      actionLoading = false;
+      confirmLoading = false;
     }
   }
 
   /**
-   * Rejects the pending request with a mandatory reason (minimum 10 characters).
-   * On success, navigates back to the approvals list.
+   * Rejects the current request with the provided reason.
+   * Requires rejection reason to be at least 10 characters.
+   * Redirects to approvals list on success.
    */
   async function handleReject() {
     if (rejectionReason.length < 10) {
-      error = "Lý do reject phải ít nhất 10 ký tự.";
+      toastStore.warning("Lý do reject phải ít nhất 10 ký tự.");
       return;
     }
     actionLoading = true;
     error = null;
     try {
       await api.approvals.reject(id, rejectionReason);
+      toastStore.info("Request đã bị reject.");
       push("/approvals");
     } catch (e) {
-      error = e.error || "Không thể reject.";
+      toastStore.error(e.error || "Không thể reject.");
     } finally {
       actionLoading = false;
     }
+  }
+
+  /** Handles confirm modal confirmation by invoking the stored action callback. */
+  function onConfirm() {
+    if (confirmAction) confirmAction();
+  }
+
+  /** Closes the confirm modal and resets its state. */
+  function onCancelModal() {
+    confirmOpen = false;
+    confirmAction = null;
+    confirmLoading = false;
   }
 </script>
 
 <div class="p-6 max-w-4xl mx-auto">
   {#if loading}
-    <div class="flex justify-center py-10"><span class="loading loading-spinner loading-lg"></span></div>
+    <div class="space-y-4">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="h-7 w-48 bg-base-300 rounded animate-pulse"></div>
+        <div class="h-5 w-20 bg-base-300 rounded animate-pulse"></div>
+      </div>
+      <Skeleton type="card" />
+      <Skeleton type="card" />
+      <Skeleton type="card" />
+    </div>
   {:else if error && !request}
     <div class="alert alert-error"><span>{error}</span></div>
   {:else if request}
@@ -263,9 +307,9 @@
     {/if}
 
     {#if request.status === "PENDING"}
-      <!-- AI Analysis Panel — auto-load khi Checker mở review -->
+      <!-- AI Analysis Panel — manual trigger để tiết kiệm token -->
       <div class="mb-6">
-        <AiAnalysisPanel requestId={id} autoLoad={true} />
+        <AiAnalysisPanel requestId={id} autoLoad={false} />
       </div>
 
       <div class="flex flex-col gap-4">
@@ -435,3 +479,14 @@
     {/if}
   {/if}
 </div>
+
+<!-- Confirm Modal -->
+<ConfirmModal
+  bind:open={confirmOpen}
+  title={confirmTitle}
+  message={confirmMessage}
+  variant={confirmVariant}
+  loading={confirmLoading}
+  on:confirm={onConfirm}
+  on:cancel={onCancelModal}
+/>

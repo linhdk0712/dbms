@@ -4,6 +4,7 @@
   import api from "../../api/index.js";
   import SqlEditor from "../../components/SqlEditor.svelte";
   import CrInput from "../../components/CrInput.svelte";
+  import { toastStore } from "../../stores/toast.js";
 
   let description = "";
   let sqlContent = "";
@@ -11,6 +12,7 @@
   let crUrl = "";
   let databases = [];
   let loading = false;
+  let loadingDbs = true;
   let error = null;
   let selectedDbType = "sql";
 
@@ -18,7 +20,9 @@
     try {
       databases = await api.databases.myPermissions();
     } catch (e) {
-      error = "Không thể tải danh sách databases.";
+      toastStore.error("Không thể tải danh sách databases.");
+    } finally {
+      loadingDbs = false;
     }
   });
 
@@ -28,9 +32,14 @@
     selectedDbType = selectedDb?.db_type === "mongodb" ? "json" : "sql";
   }
 
+  /**
+   * Tạo SQL request mới và điều hướng về danh sách requests.
+   * Validate input trước khi gọi API — hiển thị toast nếu thiếu thông tin.
+   * @param {boolean} submit - true để tạo và gửi luôn (PENDING), false để lưu nháp (DRAFT)
+   */
   async function handleSubmit(submit) {
     if (!description.trim() || !sqlContent.trim() || !databaseId) {
-      error = "Vui lòng điền đầy đủ thông tin.";
+      toastStore.warning("Vui lòng điền đầy đủ thông tin.");
       return;
     }
 
@@ -45,9 +54,11 @@
         submit,
         cr_url: crUrl.trim() || undefined,
       });
+      toastStore.success(submit ? "Request đã được tạo và gửi." : "Đã lưu bản nháp.");
       push("/requests");
     } catch (e) {
       error = e.error || "Không thể tạo request.";
+      toastStore.error(error);
     } finally {
       loading = false;
     }
@@ -55,7 +66,19 @@
 </script>
 
 <div class="p-6 max-w-4xl mx-auto">
-  <h2 class="text-2xl font-bold mb-6">Tạo SQL Request mới</h2>
+  <div class="mb-6">
+    <div class="flex items-center gap-3">
+      <a href="#/requests" class="btn btn-ghost btn-sm btn-circle">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+      </a>
+      <div>
+        <h2 class="text-2xl font-bold">Tạo SQL Request mới</h2>
+        <p class="text-sm text-base-content/60 mt-0.5">Soạn câu lệnh SQL và gửi yêu cầu thực thi</p>
+      </div>
+    </div>
+  </div>
 
   {#if error}
     <div class="alert alert-error mb-4"><span>{error}</span></div>
@@ -106,14 +129,16 @@
       on:click={() => handleSubmit(false)}
       disabled={loading}
     >
-      {loading ? "Đang lưu..." : "Lưu nháp"}
+      {#if loading}<span class="loading loading-spinner loading-sm"></span>{/if}
+      Lưu nháp
     </button>
     <button
       class="btn btn-primary"
       on:click={() => handleSubmit(true)}
       disabled={loading}
     >
-      {loading ? "Đang gửi..." : "Gửi yêu cầu"}
+      {#if loading}<span class="loading loading-spinner loading-sm"></span>{/if}
+      Gửi yêu cầu
     </button>
   </div>
 </div>

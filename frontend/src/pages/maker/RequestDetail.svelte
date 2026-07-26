@@ -5,6 +5,9 @@
   import StatusBadge from "../../components/StatusBadge.svelte";
   import SqlEditor from "../../components/SqlEditor.svelte";
   import AiAnalysisPanel from "../../components/AiAnalysisPanel.svelte";
+  import ConfirmModal from "../../components/ConfirmModal.svelte";
+  import Skeleton from "../../components/Skeleton.svelte";
+  import { toastStore } from "../../stores/toast.js";
 
   export let params = {};
 
@@ -17,6 +20,14 @@
   let editSqlContent = "";
   let auditLogs = [];
   let auditLoading = false;
+
+  // Confirm modal state
+  let confirmOpen = false;
+  let confirmAction = null;
+  let confirmTitle = "";
+  let confirmMessage = "";
+  let confirmVariant = "primary";
+  let confirmLoading = false;
 
   $: id = params.id;
 
@@ -36,7 +47,6 @@
     try {
       auditLogs = await api.requests.audit(id);
     } catch (e) {
-      // Non-blocking — nếu không load được audit thì vẫn hiển thị request
       auditLogs = [];
     } finally {
       auditLoading = false;
@@ -56,7 +66,7 @@
 
   async function saveEdit() {
     if (!editDescription.trim() || !editSqlContent.trim()) {
-      error = "Mô tả và SQL không được để trống.";
+      toastStore.warning("Mô tả và SQL không được để trống.");
       return;
     }
     actionLoading = true;
@@ -67,38 +77,55 @@
         sql_content: editSqlContent,
       });
       editing = false;
+      toastStore.success("Đã lưu thay đổi.");
     } catch (e) {
-      error = e.error || "Không thể lưu thay đổi.";
+      toastStore.error(e.error || "Không thể lưu thay đổi.");
     } finally {
       actionLoading = false;
     }
   }
 
-  async function handleSubmit() {
-    if (!confirm("Gửi request này để Checker review?")) return;
-    actionLoading = true;
-    error = null;
+  function handleSubmit() {
+    confirmTitle = "Gửi request";
+    confirmMessage = "Gửi request này để Checker review? Sau khi gửi, bạn không thể chỉnh sửa nội dung SQL.";
+    confirmVariant = "primary";
+    confirmAction = doSubmit;
+    confirmOpen = true;
+  }
+
+  async function doSubmit() {
+    confirmLoading = true;
     try {
       await api.requests.submit(id);
       request = await api.requests.get(id);
+      confirmOpen = false;
+      toastStore.success("Request đã được gửi để review.");
     } catch (e) {
-      error = e.error || "Không thể submit.";
+      toastStore.error(e.error || "Không thể submit.");
     } finally {
-      actionLoading = false;
+      confirmLoading = false;
     }
   }
 
-  async function handleCancel() {
-    if (!confirm("Hủy request này? Bạn có thể tạo request mới.")) return;
-    actionLoading = true;
-    error = null;
+  function handleCancel() {
+    confirmTitle = "Hủy request";
+    confirmMessage = "Hủy request này? Bạn có thể tạo request mới hoặc clone sau.";
+    confirmVariant = "error";
+    confirmAction = doCancel;
+    confirmOpen = true;
+  }
+
+  async function doCancel() {
+    confirmLoading = true;
     try {
       await api.requests.cancel(id);
+      confirmOpen = false;
+      toastStore.success("Request đã được hủy.");
       push("/requests");
     } catch (e) {
-      error = e.error || "Không thể hủy.";
+      toastStore.error(e.error || "Không thể hủy.");
     } finally {
-      actionLoading = false;
+      confirmLoading = false;
     }
   }
 
@@ -107,18 +134,37 @@
     error = null;
     try {
       const cloned = await api.requests.clone(id);
+      toastStore.success("Đã clone thành request mới.");
       push(`/requests/${cloned.id}`);
     } catch (e) {
-      error = e.error || "Không thể clone request.";
+      toastStore.error(e.error || "Không thể clone request.");
     } finally {
       actionLoading = false;
     }
+  }
+
+  function onConfirm() {
+    if (confirmAction) confirmAction();
+  }
+
+  function onCancelModal() {
+    confirmOpen = false;
+    confirmAction = null;
+    confirmLoading = false;
   }
 </script>
 
 <div class="p-6 max-w-4xl mx-auto">
   {#if loading}
-    <div class="flex justify-center py-10"><span class="loading loading-spinner loading-lg"></span></div>
+    <div class="space-y-4">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="h-8 w-8 bg-base-300 rounded animate-pulse"></div>
+        <div class="h-7 w-48 bg-base-300 rounded animate-pulse"></div>
+        <div class="h-5 w-20 bg-base-300 rounded animate-pulse"></div>
+      </div>
+      <Skeleton type="card" />
+      <Skeleton type="card" />
+    </div>
   {:else if error && !request}
     <div class="alert alert-error"><span>{error}</span></div>
     <a href="#/requests" class="btn btn-ghost mt-4">← Quay lại</a>
@@ -219,7 +265,8 @@
           on:click={saveEdit}
           disabled={actionLoading}
         >
-          {actionLoading ? "Đang lưu..." : "Lưu thay đổi"}
+          {#if actionLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
+          Lưu thay đổi
         </button>
         <button class="btn btn-ghost" on:click={cancelEdit}>Hủy sửa</button>
       {:else}
@@ -236,7 +283,8 @@
             on:click={handleSubmit}
             disabled={actionLoading}
           >
-            {actionLoading ? "Đang gửi..." : "Gửi yêu cầu"}
+            {#if actionLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
+            Gửi yêu cầu
           </button>
         {/if}
         {#if request.status === "PENDING"}
@@ -245,7 +293,7 @@
             on:click={handleCancel}
             disabled={actionLoading}
           >
-            {actionLoading ? "Đang hủy..." : "Hủy request"}
+            Hủy request
           </button>
         {/if}
         {#if request.status === "REJECTED" || request.status === "FAILED" || request.status === "CANCELLED"}
@@ -254,7 +302,8 @@
             on:click={handleClone}
             disabled={actionLoading}
           >
-            {actionLoading ? "Đang tạo..." : "↻ Clone thành DRAFT mới"}
+            {#if actionLoading}<span class="loading loading-spinner loading-sm"></span>{/if}
+            ↻ Clone thành DRAFT mới
           </button>
         {/if}
       {/if}
@@ -297,3 +346,14 @@
     </div>
   {/if}
 </div>
+
+<!-- Confirm Modal -->
+<ConfirmModal
+  bind:open={confirmOpen}
+  title={confirmTitle}
+  message={confirmMessage}
+  variant={confirmVariant}
+  loading={confirmLoading}
+  on:confirm={onConfirm}
+  on:cancel={onCancelModal}
+/>

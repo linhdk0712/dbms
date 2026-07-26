@@ -60,7 +60,6 @@
 
 {#if $authStore?.token}
   <Navbar />
-  <Toast />
   <div class="flex">
     <Sidebar />
     <main class="flex-1 min-h-screen bg-base-200">
@@ -70,3 +69,6 @@
 {:else}
   <Router {routes} on:conditionsFailed={conditionsFailed} />
 {/if}
+
+<!-- Toast always rendered (global) -->
+<Toast />

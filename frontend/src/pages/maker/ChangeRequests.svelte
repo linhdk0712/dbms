@@ -3,6 +3,8 @@
   import api from "../../api/index.js";
   import CrBadge from "../../components/CrBadge.svelte";
   import MaintenanceWindow from "../../components/MaintenanceWindow.svelte";
+  import Skeleton from "../../components/Skeleton.svelte";
+  import { toastStore } from "../../stores/toast.js";
 
   let crs = [];
   let loading = true;
@@ -17,6 +19,10 @@
 
   onMount(() => loadCrs());
 
+  /**
+   * Loads the paginated list of Change Requests from the API.
+   * Updates `crs`, `pagination`, and `error` state accordingly.
+   */
   async function loadCrs() {
     loading = true;
     error = null;
@@ -38,11 +44,19 @@
     }
   }
 
+  /**
+   * Navigates to a specific page and reloads the CR list.
+   * @param {number} page - The page number to navigate to.
+   */
   function goToPage(page) {
     pagination.page = page;
     loadCrs();
   }
 
+  /**
+   * Handles creating a new Change Request from the ManageEngine URL input.
+   * Validates the URL, calls the API, and refreshes the list on success.
+   */
   async function handleCreate() {
     if (!newCrUrl.trim()) {
       createError = "Vui lòng nhập URL.";
@@ -62,62 +76,118 @@
     }
   }
 
+  /**
+   * Syncs a Change Request with ManageEngine to refresh its data.
+   * @param {string} id - The CR identifier to sync.
+   */
   async function handleSync(id) {
     try {
       await api.changeRequests.sync(id);
+      toastStore.success("Đã sync CR từ ManageEngine.");
       loadCrs();
     } catch (e) {
-      alert(e.error || "Không thể sync.");
+      toastStore.error(e.error || "Không thể sync.");
     }
   }
 </script>
 
 <div class="p-6">
   <div class="flex justify-between items-center mb-6">
-    <h2 class="text-2xl font-bold">Change Requests</h2>
+    <div>
+      <h2 class="text-2xl font-bold">Change Requests</h2>
+      <p class="text-sm text-base-content/60 mt-1">Quản lý Change Request từ ManageEngine</p>
+    </div>
     <button
-      class="btn btn-primary btn-sm"
+      class="btn btn-primary btn-sm gap-1"
       on:click={() => (showCreateForm = !showCreateForm)}
     >
-      + Thêm CR
+      {#if showCreateForm}
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+        Đóng
+      {:else}
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+        </svg>
+        Thêm CR
+      {/if}
     </button>
   </div>
 
   <!-- Create form -->
   {#if showCreateForm}
-    <div class="card bg-base-100 shadow mb-6">
+    <div class="card bg-base-100 shadow-sm border border-base-300 mb-6">
       <div class="card-body">
-        <h3 class="font-semibold mb-2">Thêm Change Request mới</h3>
-        <div class="flex gap-2">
+        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          Thêm Change Request mới
+        </h3>
+
+        <div class="form-control">
+          <label class="label" for="cr-url"><span class="label-text font-medium">ManageEngine CR URL</span></label>
           <input
+            id="cr-url"
             type="url"
-            class="input input-bordered flex-1"
-            placeholder="Paste ManageEngine CR URL..."
+            class="input input-bordered w-full"
+            placeholder="https://servicedesk.company.com/WorkOrder.do?woMode=viewWO&woID=..."
             bind:value={newCrUrl}
             disabled={creating}
           />
+          <label class="label" for="cr-url">
+            <span class="label-text-alt text-base-content/50">Paste link của Change Request từ ManageEngine ServiceDesk</span>
+          </label>
+        </div>
+
+        {#if createError}
+          <div class="alert alert-error mt-2">
+            <span class="text-sm">{createError}</span>
+          </div>
+        {/if}
+
+        <div class="divider my-2"></div>
+
+        <div class="flex gap-2">
           <button
             class="btn btn-primary"
             on:click={handleCreate}
-            disabled={creating}
+            disabled={creating || !newCrUrl.trim()}
           >
-            {creating ? "Đang tạo..." : "Tạo"}
+            {#if creating}
+              <span class="loading loading-spinner loading-xs"></span>
+            {:else}
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+              </svg>
+            {/if}
+            Tạo
           </button>
-          <button class="btn btn-ghost" on:click={() => (showCreateForm = false)}>Hủy</button>
+          <button class="btn btn-ghost" on:click={() => { showCreateForm = false; createError = null; }}>Hủy</button>
         </div>
-        {#if createError}
-          <div class="text-sm text-error mt-2">{createError}</div>
-        {/if}
       </div>
     </div>
   {/if}
 
   {#if loading}
-    <div class="flex justify-center py-10"><span class="loading loading-spinner"></span></div>
+    <Skeleton type="table" rows={5} cols={6} />
   {:else if error}
-    <div class="alert alert-error"><span>{error}</span></div>
+    <div class="alert alert-error">
+      <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>{error}</span>
+      <button class="btn btn-sm btn-ghost" on:click={loadCrs}>Thử lại</button>
+    </div>
   {:else if crs.length === 0}
-    <div class="text-center py-10 opacity-60">Chưa có Change Request nào.</div>
+    <div class="text-center py-16">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-base-content/20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+      </svg>
+      <p class="text-base-content/50 mb-4">Chưa có Change Request nào.</p>
+      <button class="btn btn-primary btn-sm" on:click={() => (showCreateForm = true)}>Thêm CR đầu tiên</button>
+    </div>
   {:else}
     <div class="overflow-x-auto">
       <table class="table table-zebra w-full">

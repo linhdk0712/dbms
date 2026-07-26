@@ -136,8 +136,11 @@
 
     <!-- No analysis yet -->
     {:else if !analysis}
-      <div class="text-sm opacity-60 py-2">
-        Nhấn nút để phân tích SQL bằng AI.
+      <div class="flex items-center gap-3 py-2">
+        <span class="text-sm opacity-60">Chưa có phân tích.</span>
+        <button class="btn btn-sm btn-outline btn-primary" on:click={runAnalysis}>
+          🤖 Phân tích SQL
+        </button>
       </div>
 
     <!-- Analysis results -->
