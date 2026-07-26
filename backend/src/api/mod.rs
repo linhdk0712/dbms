@@ -22,11 +22,13 @@ use tower_http::{
     limit::RequestBodyLimitLayer,
     trace::TraceLayer,
 };
+use tracing::Span;
 
 use crate::auth::middleware::require_auth;
 use crate::auth::rate_limit::{rate_limit_login, RateLimiter};
 use crate::state::AppState;
-use crate::ws;
+// WebSocket disabled
+// use crate::ws;
 
 /// Giới hạn kích thước request body: 100KB.
 const MAX_BODY_SIZE: usize = 100 * 1024;
@@ -41,7 +43,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/health", get(health::health_check))
         .route("/auth/login", get(auth::login).layer(axum_mw::from_fn(rate_limit_login)))
         .route("/auth/callback", get(auth::callback))
-        .route("/ws", get(ws::ws_handler))
+        // WebSocket disabled
+        // .route("/ws", get(ws::ws_handler))
         .layer(axum::Extension(rate_limiter));
 
     // Protected routes — cần Bearer token hợp lệ
@@ -100,7 +103,23 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum_mw::from_fn(security_headers))
         .layer(cors)
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::extract::Request| {
+                    tracing::info_span!(
+                        "http_request",
+                        method = %request.method(),
+                        uri = %request.uri(),
+                    )
+                })
+                .on_response(|response: &axum::http::Response<_>, latency: std::time::Duration, _span: &Span| {
+                    tracing::info!(
+                        status = response.status().as_u16(),
+                        latency_ms = latency.as_millis(),
+                        "response"
+                    );
+                }),
+        )
         .with_state(state)
 }
 

@@ -89,7 +89,7 @@ docker run -p 8088:80 secs-frontend
 
 Container sử dụng Nginx để:
 - Serve static files (với caching 1 năm cho hashed assets)
-- Reverse proxy `/api/`, `/auth/`, `/ws` đến backend
+- Reverse proxy `/api/`, `/auth/` đến backend (WebSocket `/ws` hiện tại disabled)
 - SPA fallback routing (mọi route trả về `index.html`)
 
 ## Quy ước code

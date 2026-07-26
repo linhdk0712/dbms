@@ -68,7 +68,7 @@ pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<SqlRequest>, sq
     sqlx::query_as::<_, SqlRequest>(
         r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                   rejection_reason, executed_at, rows_affected, execution_error,
-                  created_at, updated_at, submitted_at, approval_levels_required
+                  created_at, updated_at, submitted_at, approval_levels_required, cr_id
            FROM sql_requests WHERE id = $1"#,
     )
     .bind(id)
@@ -89,7 +89,7 @@ pub async fn list_by_user(
         sqlx::query_as::<_, SqlRequest>(
             r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                       rejection_reason, executed_at, rows_affected, execution_error,
-                      created_at, updated_at, submitted_at, approval_levels_required
+                      created_at, updated_at, submitted_at, approval_levels_required, cr_id
                FROM sql_requests
                WHERE created_by = $1 AND status = $2
                ORDER BY updated_at DESC
@@ -105,7 +105,7 @@ pub async fn list_by_user(
         sqlx::query_as::<_, SqlRequest>(
             r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                       rejection_reason, executed_at, rows_affected, execution_error,
-                      created_at, updated_at, submitted_at, approval_levels_required
+                      created_at, updated_at, submitted_at, approval_levels_required, cr_id
                FROM sql_requests
                WHERE created_by = $1
                ORDER BY updated_at DESC
@@ -151,7 +151,7 @@ pub async fn list_pending(pool: &PgPool, checker_user_id: Uuid) -> Result<Vec<Sq
     sqlx::query_as::<_, SqlRequest>(
         r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                   rejection_reason, executed_at, rows_affected, execution_error,
-                  created_at, updated_at, submitted_at, approval_levels_required
+                  created_at, updated_at, submitted_at, approval_levels_required, cr_id
            FROM sql_requests
            WHERE status = 'PENDING' AND created_by != $1
            ORDER BY submitted_at ASC"#,

@@ -32,7 +32,7 @@ Unit 2 triển khai toàn bộ authentication stack: OIDC/SSO login flow với P
 | File | Mô tả |
 |------|-------|
 | `db/mod.rs` | Module exports |
-| `db/users.rs` | `upsert_from_oidc`, `get_user_roles`, `find_by_subject`, `is_user_active` |
+| `db/users.rs` | `upsert_from_oidc`, `get_user_roles`, `find_by_subject`, `is_user_active`, `list_all`, `get_by_id`, `update_active_status`, `replace_roles` |
 
 ### Backend — Updated
 | File | Thay đổi |

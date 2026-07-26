@@ -153,3 +153,69 @@ pub async fn is_user_active(pool: &PgPool, user_id: Uuid) -> Result<bool, sqlx::
 
     Ok(result.map(|(active,)| active).unwrap_or(false))
 }
+
+/// Liệt kê tất cả users (Admin view), sắp xếp theo display_name.
+pub async fn list_all(pool: &PgPool) -> Result<Vec<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        r#"SELECT id, oidc_subject, email, display_name, is_active, created_at, updated_at
+           FROM users ORDER BY display_name ASC"#,
+    )
+    .fetch_all(pool)
+    .await
+}
+
+/// Lấy user theo ID. Trả về None nếu không tồn tại.
+pub async fn get_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<User>, sqlx::Error> {
+    sqlx::query_as::<_, User>(
+        r#"SELECT id, oidc_subject, email, display_name, is_active, created_at, updated_at
+           FROM users WHERE id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Cập nhật trạng thái active/inactive cho user.
+pub async fn update_active_status(
+    pool: &PgPool,
+    user_id: Uuid,
+    is_active: bool,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(r#"UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2"#)
+        .bind(is_active)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// Thay thế toàn bộ roles của user (xóa cũ, gán mới).
+/// `granted_by` là user_id của Admin thực hiện thao tác.
+pub async fn replace_roles(
+    pool: &PgPool,
+    user_id: Uuid,
+    roles: &[String],
+    granted_by: Uuid,
+) -> Result<(), sqlx::Error> {
+    // Xoá tất cả roles hiện tại
+    sqlx::query(r#"DELETE FROM user_roles WHERE user_id = $1"#)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    // Gán roles mới
+    for role in roles {
+        sqlx::query(
+            r#"INSERT INTO user_roles (id, user_id, role, granted_by, granted_at)
+               VALUES ($1, $2, $3, $4, NOW())"#,
+        )
+        .bind(Uuid::new_v4())
+        .bind(user_id)
+        .bind(role)
+        .bind(granted_by)
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}

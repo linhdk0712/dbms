@@ -8,13 +8,14 @@ mod executor;
 mod integrations;
 mod models;
 mod state;
-mod ws;
+// WebSocket disabled
+// mod ws;
 
 use anyhow::{Context, Result};
 use sqlx::postgres::PgPoolOptions;
 use tokio::sync::broadcast;
 use tracing_appender::rolling;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{fmt::time::OffsetTime, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::auth::oidc::create_oidc_client;
 use crate::api::auth::oidc_session_cleanup;
@@ -28,6 +29,15 @@ const NOTIFICATION_CHANNEL_CAPACITY: usize = 128;
 /// Số connection tối đa trong PgPool.
 const MAX_DB_CONNECTIONS: u32 = 20;
 
+/// Entry point cho SECS backend server.
+///
+/// Thực hiện tuần tự: load config → init logging → connect DB → run migrations →
+/// init OIDC client → build router → serve HTTP.
+///
+/// # Errors
+///
+/// Trả về lỗi nếu thiếu config, không kết nối được DB, migration thất bại,
+/// hoặc không bind được port.
 #[tokio::main]
 async fn main() -> Result<()> {
     // 1. Load .env (nếu có) — bỏ qua lỗi nếu không tồn tại
@@ -120,21 +130,31 @@ fn init_tracing(log_dir: &str) -> tracing_appender::non_blocking::WorkerGuard {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("info"));
 
+    // Local time offset — phải lấy TRƯỚC khi spawn threads (do restriction trên Linux)
+    // Format: 2026-07-26T08:25:17.391+07:00
+    let local_timer = OffsetTime::local_rfc_3339().unwrap_or_else(|_| {
+        // Fallback: UTC nếu không lấy được local offset
+        OffsetTime::new(time::UtcOffset::UTC, time::format_description::well_known::Rfc3339)
+    });
+
     // File appender: daily rotation, prefix "secs-backend"
     let file_appender = rolling::daily(log_dir, "secs-backend.log");
     let (non_blocking_file, guard) = tracing_appender::non_blocking(file_appender);
 
-    // Stdout layer: JSON format (machine-readable, cho log aggregators)
-    let stdout_layer = tracing_subscriber::fmt::layer().json();
+    // Stdout layer: JSON format (machine-readable, cho log aggregators) với local time
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_timer(local_timer.clone());
 
-    // File layer: plain text với timestamps, targets, thread IDs (human-readable)
+    // File layer: plain text với timestamps, targets, thread IDs (human-readable) với local time
     let file_layer = tracing_subscriber::fmt::layer()
         .with_writer(non_blocking_file)
         .with_ansi(false)
         .with_target(true)
         .with_thread_ids(true)
         .with_file(true)
-        .with_line_number(true);
+        .with_line_number(true)
+        .with_timer(local_timer);
 
     tracing_subscriber::registry()
         .with(filter)

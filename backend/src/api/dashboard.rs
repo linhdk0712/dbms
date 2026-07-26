@@ -1,15 +1,21 @@
 use axum::{extract::State, Json};
 use serde::Serialize;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::auth::extractors::RequireAuth;
+use crate::db;
 use crate::error::AppError;
 use crate::models::user::Role;
 use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
+/// Role-aware dashboard statistics DTO.
+///
+/// Fields are populated differently depending on the user's effective role:
+/// - **Admin**: all `*_requests` fields filled; checker-specific fields are `None`.
+/// - **Checker**: `*_requests` fields are zero; checker-specific fields populated.
+/// - **Maker**: `*_requests` fields filtered to own requests; checker-specific fields `None`.
 #[derive(Debug, Serialize)]
 pub struct DashboardStats {
     pub total_requests: i64,
@@ -75,31 +81,20 @@ pub async fn get_stats(
     RequireAuth(claims): RequireAuth,
 ) -> Result<Json<DashboardStats>, AppError> {
     match determine_effective_role(&claims.roles) {
-        Some(Role::Admin) => get_admin_stats(&state.db).await,
-        Some(Role::Checker) => get_checker_stats(&state.db, claims.user_id).await,
-        Some(Role::Maker) => get_maker_stats(&state.db, claims.user_id).await,
+        Some(Role::Admin) => get_admin_stats(&state).await,
+        Some(Role::Checker) => get_checker_stats(&state, claims.user_id).await,
+        Some(Role::Maker) => get_maker_stats(&state, claims.user_id).await,
         None => Ok(Json(DashboardStats::empty())),
     }
 }
 
-// ── Role-specific stats functions ──────────────────────────────────────
+// ── Role-specific stats functions (thin wrappers around db layer) ──────
 
 /// Admin stats: global counts across all requests.
-async fn get_admin_stats(pool: &PgPool) -> Result<Json<DashboardStats>, AppError> {
-    let stats: (i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
-        r#"SELECT
-               COUNT(*) as total,
-               COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-               COUNT(*) FILTER (WHERE status = 'APPROVED') as approved,
-               COUNT(*) FILTER (WHERE status = 'EXECUTED') as executed,
-               COUNT(*) FILTER (WHERE status = 'FAILED') as failed,
-               COUNT(*) FILTER (WHERE status = 'REJECTED') as rejected,
-               COUNT(*) FILTER (WHERE status = 'CANCELLED') as cancelled
-           FROM sql_requests"#,
-    )
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+async fn get_admin_stats(state: &AppState) -> Result<Json<DashboardStats>, AppError> {
+    let stats = db::dashboard::get_admin_stats(&state.db)
+        .await
+        .map_err(AppError::Database)?;
 
     Ok(Json(DashboardStats {
         total_requests: stats.0,
@@ -116,45 +111,19 @@ async fn get_admin_stats(pool: &PgPool) -> Result<Json<DashboardStats>, AppError
     }))
 }
 
-/// Checker stats:
-/// - pending_for_review: pending requests excluding own
-/// - total_reviewed: total approvals + rejections by this checker
-/// - total_approved_by_me: approvals from request_approvals
-/// - total_rejected_by_me: rejections from audit_log (action = 'REJECTED')
-/// Main stats fields are set to 0.
-async fn get_checker_stats(pool: &PgPool, user_id: Uuid) -> Result<Json<DashboardStats>, AppError> {
-    // Count pending requests excluding checker's own
-    let (pending_for_review,): (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)
-           FROM sql_requests
-           WHERE status = 'PENDING' AND created_by != $1"#,
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+/// Checker stats: pending for review + approval/rejection history.
+async fn get_checker_stats(state: &AppState, user_id: Uuid) -> Result<Json<DashboardStats>, AppError> {
+    let pending_for_review = db::dashboard::count_pending_for_review(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?;
 
-    // Count total approved by this checker (from request_approvals)
-    let (total_approved,): (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)
-           FROM request_approvals
-           WHERE approver_id = $1"#,
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+    let total_approved = db::dashboard::count_approved_by_checker(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?;
 
-    // Count total rejected by this checker (from audit_log)
-    let (total_rejected,): (i64,) = sqlx::query_as(
-        r#"SELECT COUNT(*)
-           FROM audit_log
-           WHERE action = 'REJECTED' AND actor_id = $1"#,
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+    let total_rejected = db::dashboard::count_rejected_by_checker(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?;
 
     let total_reviewed = total_approved + total_rejected;
 
@@ -174,24 +143,10 @@ async fn get_checker_stats(pool: &PgPool, user_id: Uuid) -> Result<Json<Dashboar
 }
 
 /// Maker stats: same counters as admin but filtered to own requests only.
-/// Checker-specific fields remain None.
-async fn get_maker_stats(pool: &PgPool, user_id: Uuid) -> Result<Json<DashboardStats>, AppError> {
-    let stats: (i64, i64, i64, i64, i64, i64, i64) = sqlx::query_as(
-        r#"SELECT
-               COUNT(*) as total,
-               COUNT(*) FILTER (WHERE status = 'PENDING') as pending,
-               COUNT(*) FILTER (WHERE status = 'APPROVED') as approved,
-               COUNT(*) FILTER (WHERE status = 'EXECUTED') as executed,
-               COUNT(*) FILTER (WHERE status = 'FAILED') as failed,
-               COUNT(*) FILTER (WHERE status = 'REJECTED') as rejected,
-               COUNT(*) FILTER (WHERE status = 'CANCELLED') as cancelled
-           FROM sql_requests
-           WHERE created_by = $1"#,
-    )
-    .bind(user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::Database)?;
+async fn get_maker_stats(state: &AppState, user_id: Uuid) -> Result<Json<DashboardStats>, AppError> {
+    let stats = db::dashboard::get_maker_stats(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?;
 
     Ok(Json(DashboardStats {
         total_requests: stats.0,

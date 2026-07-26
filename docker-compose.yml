@@ -46,35 +46,35 @@ services:
       retries: 12
       start_period: 30s
 
-  # ── Backend (Rust/Axum) ───────────────────────────────────────────────────────
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: secs_backend
-    environment:
-      DATABASE_URL: postgres://secs_user:secs_password@postgres:5432/secs_db
-      JWT_SECRET: change-me-to-a-random-256-bit-secret-string-minimum-32-chars
-      ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-      OIDC_ISSUER_URL: http://localhost:8080/realms/secs
-      OIDC_CLIENT_ID: secs-backend
-      OIDC_CLIENT_SECRET: change-me-oidc-client-secret
-      OIDC_REDIRECT_URI: http://localhost:8088/auth/callback
-      FRONTEND_URL: http://localhost:8088
-      SQL_EXECUTION_TIMEOUT_SECS: "30"
-      RUST_LOG: info,secs_backend=debug
-      DISABLE_TARGET_DB_TLS: "true"
-      PORT: "3000"
-    ports:
-      - "3000:3000"
-    extra_hosts:
-      - "localhost:host-gateway"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      keycloak:
-        condition: service_healthy
-    restart: unless-stopped
+  # ── Backend (Rust/Axum) — disabled, run from IDE ──────────────────────────────
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: secs_backend
+  #   environment:
+  #     DATABASE_URL: postgres://secs_user:secs_password@postgres:5432/secs_db
+  #     JWT_SECRET: change-me-to-a-random-256-bit-secret-string-minimum-32-chars
+  #     ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  #     OIDC_ISSUER_URL: http://localhost:8080/realms/secs
+  #     OIDC_CLIENT_ID: secs-backend
+  #     OIDC_CLIENT_SECRET: change-me-oidc-client-secret
+  #     OIDC_REDIRECT_URI: http://localhost:8088/auth/callback
+  #     FRONTEND_URL: http://localhost:8088
+  #     SQL_EXECUTION_TIMEOUT_SECS: "30"
+  #     RUST_LOG: info,secs_backend=debug
+  #     DISABLE_TARGET_DB_TLS: "true"
+  #     PORT: "3000"
+  #   ports:
+  #     - "3000:3000"
+  #   extra_hosts:
+  #     - "localhost:host-gateway"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     keycloak:
+  #       condition: service_healthy
+  #   restart: unless-stopped
 
   # ── MySQL (target database for testing) ─────────────────────────────────────
   mysql:
@@ -136,17 +136,17 @@ services:
       "
     restart: "no"
 
-  # ── Frontend (Svelte + Nginx) ─────────────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    container_name: secs_frontend
-    ports:
-      - "8088:80"
-    depends_on:
-      - backend
-    restart: unless-stopped
+  # ── Frontend (Svelte + Nginx) — disabled, run from IDE ────────────────────────
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   container_name: secs_frontend
+  #   ports:
+  #     - "8088:80"
+  #   depends_on:
+  #     - backend
+  #   restart: unless-stopped
 
 volumes:
   postgres_data:

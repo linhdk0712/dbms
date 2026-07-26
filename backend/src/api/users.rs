@@ -16,15 +16,6 @@ use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
-pub struct UserResponse {
-    pub id: Uuid,
-    pub email: String,
-    pub display_name: String,
-    pub is_active: bool,
-    pub created_at: String,
-}
-
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserBody {
     pub is_active: Option<bool>,
@@ -46,12 +37,6 @@ pub struct GrantPermissionBody {
     pub database_id: Uuid,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct RevokePermissionPath {
-    pub user_id: Uuid,
-    pub database_id: Uuid,
-}
-
 // ── Handlers ───────────────────────────────────────────────────────────
 
 /// `GET /api/v1/users` — Admin xem danh sách users.
@@ -59,15 +44,11 @@ pub async fn list_users(
     State(state): State<AppState>,
     RequireAdmin(_claims): RequireAdmin,
 ) -> Result<Json<Vec<UserDetailResponse>>, AppError> {
-    let users: Vec<crate::models::user::User> = sqlx::query_as(
-        r#"SELECT id, oidc_subject, email, display_name, is_active, created_at, updated_at
-           FROM users ORDER BY display_name ASC"#,
-    )
-    .fetch_all(&state.db)
-    .await
-    .map_err(AppError::Database)?;
+    let users = db::users::list_all(&state.db)
+        .await
+        .map_err(AppError::Database)?;
 
-    let mut responses = Vec::new();
+    let mut responses = Vec::with_capacity(users.len());
     for u in &users {
         let roles = db::users::get_user_roles(&state.db, u.id)
             .await
@@ -91,15 +72,10 @@ pub async fn get_user(
     RequireAdmin(_claims): RequireAdmin,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<UserDetailResponse>, AppError> {
-    let user: crate::models::user::User = sqlx::query_as(
-        r#"SELECT id, oidc_subject, email, display_name, is_active, created_at, updated_at
-           FROM users WHERE id = $1"#,
-    )
-    .bind(user_id)
-    .fetch_optional(&state.db)
-    .await
-    .map_err(AppError::Database)?
-    .ok_or(AppError::NotFound)?;
+    let user = db::users::get_by_id(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or(AppError::NotFound)?;
 
     let roles = db::users::get_user_roles(&state.db, user.id)
         .await
@@ -147,10 +123,7 @@ pub async fn update_user(
 
     // Update is_active nếu có
     if let Some(is_active) = body.is_active {
-        sqlx::query(r#"UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2"#)
-            .bind(is_active)
-            .bind(user_id)
-            .execute(&state.db)
+        db::users::update_active_status(&state.db, user_id, is_active)
             .await
             .map_err(AppError::Database)?;
     }
@@ -165,27 +138,9 @@ pub async fn update_user(
             }
         }
 
-        // Xoá tất cả roles hiện tại
-        sqlx::query(r#"DELETE FROM user_roles WHERE user_id = $1"#)
-            .bind(user_id)
-            .execute(&state.db)
+        db::users::replace_roles(&state.db, user_id, roles, claims.user_id)
             .await
             .map_err(AppError::Database)?;
-
-        // Gán roles mới
-        for role in roles {
-            sqlx::query(
-                r#"INSERT INTO user_roles (id, user_id, role, granted_by, granted_at)
-                   VALUES ($1, $2, $3, $4, NOW())"#,
-            )
-            .bind(uuid::Uuid::new_v4())
-            .bind(user_id)
-            .bind(role)
-            .bind(claims.user_id)
-            .execute(&state.db)
-            .await
-            .map_err(AppError::Database)?;
-        }
     }
 
     // ── Audit logging — compare old vs new ────────────────────────────
@@ -240,14 +195,10 @@ pub async fn update_user(
     }
 
     // Trả về user sau khi update
-    let user: crate::models::user::User = sqlx::query_as(
-        r#"SELECT id, oidc_subject, email, display_name, is_active, created_at, updated_at
-           FROM users WHERE id = $1"#,
-    )
-    .bind(user_id)
-    .fetch_one(&state.db)
-    .await
-    .map_err(AppError::Database)?;
+    let user = db::users::get_by_id(&state.db, user_id)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or(AppError::NotFound)?;
 
     let updated_roles = db::users::get_user_roles(&state.db, user.id)
         .await

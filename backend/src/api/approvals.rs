@@ -59,6 +59,8 @@ pub struct ApprovalDetailResponse {
     pub status: RequestStatus,
     pub database_id: Uuid,
     pub database_name: Option<String>,
+    /// Connection string hiển thị (không chứa credentials), VD: "postgresql://host:5432/dbname"
+    pub database_connection_string: Option<String>,
     pub created_by: Uuid,
     pub created_at: String,
     pub submitted_at: Option<String>,
@@ -122,12 +124,17 @@ pub async fn get_detail(
         .map_err(AppError::Database)?
         .ok_or(AppError::NotFound)?;
 
-    // Lấy database name
-    let db_name = db::databases::get_by_id(&state.db, request.database_id)
+    // Lấy database info
+    let db_conn = db::databases::get_by_id(&state.db, request.database_id)
         .await
         .ok()
-        .flatten()
-        .map(|d| d.name);
+        .flatten();
+
+    let db_name = db_conn.as_ref().map(|d| d.name.clone());
+    let db_connection_string = db_conn.as_ref().map(|d| {
+        let schema_part = d.schema_name.as_deref().map_or(String::new(), |s| format!("/{}", s));
+        format!("{}://{}:{}/{}{}", d.db_type, d.host, d.port, d.database_name, schema_part)
+    });
 
     // Đếm số approvals hiện có
     let approval_count = db::requests::count_approvals(&state.db, id)
@@ -141,6 +148,7 @@ pub async fn get_detail(
         status: request.status,
         database_id: request.database_id,
         database_name: db_name,
+        database_connection_string: db_connection_string,
         created_by: request.created_by,
         created_at: request.created_at.to_rfc3339(),
         submitted_at: request.submitted_at.map(|t| t.to_rfc3339()),

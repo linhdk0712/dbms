@@ -146,6 +146,36 @@
       </div>
     {/if}
 
+    <!-- Thông tin request -->
+    <div class="card bg-base-100 shadow mb-6">
+      <div class="card-body">
+        <h3 class="font-semibold mb-3">Thông tin request</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <span class="text-sm text-base-content/60">Thời gian tạo</span>
+            <p class="font-medium">{new Date(request.created_at).toLocaleString('vi-VN')}</p>
+          </div>
+          <div>
+            <span class="text-sm text-base-content/60">Thời gian gửi duyệt</span>
+            <p class="font-medium">
+              {#if request.submitted_at}
+                {new Date(request.submitted_at).toLocaleString('vi-VN')}
+              {:else}
+                <span class="text-base-content/40">—</span>
+              {/if}
+            </p>
+          </div>
+          <div>
+            <span class="text-sm text-base-content/60">Database đích</span>
+            <p class="font-medium">{request.database_name || request.database_id}</p>
+            {#if request.database_connection_string}
+              <p class="text-sm text-base-content/60 font-mono mt-1">{request.database_connection_string}</p>
+            {/if}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="card bg-base-100 shadow mb-6">
       <div class="card-body">
         <h3 class="font-semibold mb-2">Mô tả</h3>

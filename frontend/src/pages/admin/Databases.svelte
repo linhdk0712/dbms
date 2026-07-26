@@ -13,8 +13,18 @@
   // Form fields
   let form = { name: "", db_type: "postgresql", host: "", port: 5432, database_name: "", schema_name: "", username: "", password: "", timeout_secs: 30 };
 
+  // Edit state
+  let editingDb = null;
+  let editForm = { name: "", host: "", port: 5432, database_name: "", schema_name: "", timeout_secs: 30 };
+  let editSaving = false;
+  let editError = null;
+
   onMount(loadDatabases);
 
+  /**
+   * Tải danh sách database connections từ API.
+   * Cập nhật state `databases`, `loading`, và `error`.
+   */
   async function loadDatabases() {
     loading = true;
     try {
@@ -26,6 +36,10 @@
     }
   }
 
+  /**
+   * Kiểm tra kết nối cho database mới (chưa lưu) bằng thông tin trong form.
+   * Gọi API test-new và cập nhật `testNewResult` với kết quả.
+   */
   async function handleTestNew() {
     testingNew = true;
     testNewResult = null;
@@ -44,6 +58,10 @@
     }
   }
 
+  /**
+   * Tạo database connection mới từ dữ liệu form.
+   * Sau khi tạo thành công, reset form và reload danh sách.
+   */
   async function handleCreate() {
     try {
       await api.databases.create({
@@ -61,6 +79,10 @@
     }
   }
 
+  /**
+   * Kiểm tra kết nối cho một database đã lưu.
+   * @param {string} id - UUID của database connection cần test.
+   */
   async function handleTest(id) {
     testResult = null;
     try {
@@ -70,12 +92,57 @@
     }
   }
 
+  /**
+   * Bật/tắt trạng thái active của một database connection.
+   * @param {string} id - UUID của database connection.
+   * @param {boolean} isActive - Trạng thái hiện tại (sẽ đảo ngược).
+   */
   async function handleToggle(id, isActive) {
     try {
       await api.databases.update(id, { is_active: !isActive });
       loadDatabases();
     } catch (e) {
       alert(e.error || "Lỗi.");
+    }
+  }
+
+  function openEdit(db) {
+    editingDb = db;
+    editForm = {
+      name: db.name,
+      host: db.host,
+      port: db.port,
+      database_name: db.database_name,
+      schema_name: db.schema_name || "",
+      timeout_secs: db.timeout_secs || 30,
+    };
+    editError = null;
+  }
+
+  function closeEdit() {
+    editingDb = null;
+    editError = null;
+  }
+
+  async function handleEdit() {
+    editSaving = true;
+    editError = null;
+    try {
+      const payload = {
+        name: editForm.name,
+        host: editForm.host,
+        port: parseInt(editForm.port),
+        database_name: editForm.database_name,
+        schema_name: editForm.schema_name || null,
+        timeout_secs: parseInt(editForm.timeout_secs),
+      };
+      await api.databases.update(editingDb.id, payload);
+      closeEdit();
+      loadDatabases();
+    } catch (e) {
+      editError = e.error || "Không thể cập nhật.";
+    } finally {
+      editSaving = false;
     }
   }
 </script>
@@ -167,6 +234,7 @@
                 {/if}
               </td>
               <td class="flex gap-1">
+                <button class="btn btn-xs btn-outline btn-info" on:click={() => openEdit(db)}>Edit</button>
                 <button class="btn btn-xs btn-outline" on:click={() => handleTest(db.id)}>Test</button>
                 <button class="btn btn-xs btn-ghost" on:click={() => handleToggle(db.id, db.is_active)}>
                   {db.is_active ? "Disable" : "Enable"}
@@ -176,6 +244,61 @@
           {/each}
         </tbody>
       </table>
+    </div>
+  {/if}
+
+  <!-- Edit Modal -->
+  {#if editingDb}
+    <div class="modal modal-open">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Chỉnh sửa: {editingDb.name}</h3>
+        {#if editError}
+          <div class="alert alert-error mb-3"><span>{editError}</span></div>
+        {/if}
+        <div class="grid grid-cols-1 gap-3">
+          <div class="form-control">
+            <label class="label"><span class="label-text">Tên</span></label>
+            <input class="input input-bordered" bind:value={editForm.name} />
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">Loại</span></label>
+            <input class="input input-bordered" value={editingDb.db_type} disabled />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Host</span></label>
+              <input class="input input-bordered" bind:value={editForm.host} />
+            </div>
+            <div class="form-control">
+              <label class="label"><span class="label-text">Port</span></label>
+              <input class="input input-bordered" type="number" bind:value={editForm.port} />
+            </div>
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">Database name</span></label>
+            <input class="input input-bordered" bind:value={editForm.database_name} />
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">Schema (optional)</span></label>
+            <input class="input input-bordered" bind:value={editForm.schema_name} />
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">Timeout (giây)</span></label>
+            <input class="input input-bordered" type="number" bind:value={editForm.timeout_secs} />
+          </div>
+        </div>
+        <div class="modal-action">
+          <button class="btn btn-primary" on:click={handleEdit} disabled={editSaving}>
+            {#if editSaving}
+              <span class="loading loading-spinner loading-xs"></span> Đang lưu...
+            {:else}
+              Lưu thay đổi
+            {/if}
+          </button>
+          <button class="btn btn-ghost" on:click={closeEdit}>Hủy</button>
+        </div>
+      </div>
+      <div class="modal-backdrop" on:click={closeEdit}></div>
     </div>
   {/if}
 </div>

@@ -154,7 +154,7 @@ docker run -p 3000:3000 --env-file .env secs-backend
 | GET | `/api/databases` | Danh sách database connections |
 | GET | `/api/dashboard` | Dashboard data |
 | GET | `/api/audit` | Audit log |
-| GET | `/ws` | WebSocket connection |
+| GET | `/ws` | WebSocket connection (hiện tại disabled) |
 
 ## Quy ước code
 

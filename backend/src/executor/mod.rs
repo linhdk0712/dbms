@@ -412,30 +412,30 @@ async fn validate_sql_mysql(
                 }
                 for row in &rows {
                     use sqlx::Row;
-                    let select_type: String = row.try_get("select_type").unwrap_or_default();
-                    let table: String = row.try_get("table").unwrap_or_default();
-                    let access_type: String = row.try_get("type").unwrap_or_default();
-                    let key: Option<String> = row.try_get("key").ok();
-                    let rows_est: Option<i64> = row.try_get("rows").ok();
-                    let extra: String = row.try_get("Extra").unwrap_or_default();
+                    let select_type: Option<String> = row.try_get("select_type").ok().flatten();
+                    let table: Option<String> = row.try_get("table").ok().flatten();
+                    let access_type: Option<String> = row.try_get("type").ok().flatten();
+                    let key: Option<String> = row.try_get("key").ok().flatten();
+                    let rows_est: Option<i64> = row.try_get("rows").ok().flatten();
+                    let extra: Option<String> = row.try_get("Extra").ok().flatten();
 
                     let plan_line = format!(
                         "type={}, table={}, access={}, key={}, rows={}, extra={}",
-                        select_type,
-                        table,
-                        access_type,
+                        select_type.as_deref().unwrap_or("-"),
+                        table.as_deref().unwrap_or("-"),
+                        access_type.as_deref().unwrap_or("-"),
                         key.as_deref().unwrap_or("NULL"),
                         rows_est.map(|r| r.to_string()).unwrap_or("?".to_string()),
-                        extra
+                        extra.as_deref().unwrap_or("")
                     );
                     all_plans.push(plan_line);
 
-                    if access_type == "ALL" {
-                        all_warnings.push(format!("Statement {}: Full table scan on '{}' — thiếu index", i + 1, table));
+                    if access_type.as_deref() == Some("ALL") {
+                        all_warnings.push(format!("Statement {}: Full table scan on '{}' — thiếu index", i + 1, table.as_deref().unwrap_or("?")));
                     }
                     if let Some(r) = rows_est {
                         if r > 100_000 {
-                            all_warnings.push(format!("Statement {}: Estimated {} rows trên '{}' — query có thể chậm", i + 1, r, table));
+                            all_warnings.push(format!("Statement {}: Estimated {} rows trên '{}' — query có thể chậm", i + 1, r, table.as_deref().unwrap_or("?")));
                         }
                     }
                 }
@@ -506,7 +506,14 @@ async fn validate_sql_oracle(
     }
 }
 
-/// Oracle EXPLAIN PLAN blocking implementation.
+/// Oracle EXPLAIN PLAN blocking implementation (chạy trên blocking thread).
+///
+/// Kết nối Oracle qua TCPS, set schema nếu có, sau đó chạy `EXPLAIN PLAN FOR`
+/// cho từng statement. Kết quả plan được đọc từ `PLAN_TABLE` và phân tích
+/// cảnh báo hiệu năng (full table access, high cost).
+///
+/// # Note
+/// Hàm này chạy synchronous (blocking) — phải gọi qua `spawn_blocking`.
 #[cfg(feature = "oracle-support")]
 fn validate_sql_oracle_blocking(
     connect_string: &str,
@@ -608,6 +615,9 @@ fn validate_sql_oracle_blocking(
     }
 }
 
+/// Stub implementation khi feature `oracle-support` không được bật.
+///
+/// Trả về lỗi cho biết Oracle chưa được compile — người dùng cần enable feature.
 #[cfg(not(feature = "oracle-support"))]
 fn validate_sql_oracle_blocking(
     _connect_string: &str,
