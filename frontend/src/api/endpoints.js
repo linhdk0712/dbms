@@ -138,3 +138,65 @@ export const CHANGE_REQUESTS = {
   SYNC: (id) => `/change-requests/${id}/sync`,
   DELETE: (id) => `/change-requests/${id}`,
 };
+
+// ─── Data Queries ──────────────────────────────────────────────────────────────
+
+/**
+ * Data Query Permission endpoint paths.
+ * @property {string} LIST - List data query requests (filter by status, user)
+ * @property {string} CREATE - Create a new data query request
+ * @property {function(string): string} GET - Get data query detail by ID
+ * @property {function(string): string} UPDATE - Update a draft data query
+ * @property {function(string): string} SUBMIT - Submit data query for approval
+ * @property {function(string): string} EXECUTE - Execute an approved data query
+ * @property {function(string): string} EXECUTIONS - Get execution history of a query
+ */
+export const DATA_QUERIES = {
+  LIST: "/data-queries",
+  CREATE: "/data-queries",
+  GET: (id) => `/data-queries/${id}`,
+  UPDATE: (id) => `/data-queries/${id}`,
+  SUBMIT: (id) => `/data-queries/${id}/submit`,
+  EXECUTE: (id) => `/data-queries/${id}/execute`,
+  EXECUTIONS: (id) => `/data-queries/${id}/executions`,
+};
+
+// ─── Data Query Approvals ──────────────────────────────────────────────────────
+
+/**
+ * Data Query Approval endpoint paths (Approvers: ITO/ITS/Compliance).
+ * @property {string} PENDING - List pending data query approvals for current user's unit
+ * @property {function(string): string} APPROVE - Approve a data query at current level
+ * @property {function(string): string} REJECT - Reject a data query
+ */
+export const DATA_QUERY_APPROVALS = {
+  PENDING: "/data-query-approvals/pending",
+  APPROVE: (id) => `/data-queries/${id}/approve`,
+  REJECT: (id) => `/data-queries/${id}/reject`,
+};
+
+// ─── Data Query Approval Rules (DBA/Admin) ─────────────────────────────────────
+
+/**
+ * Approval Matrix management endpoint paths (Admin/DBA).
+ * @property {string} LIST - List all approval rules
+ * @property {string} CREATE - Create a new approval rule
+ * @property {function(string): string} UPDATE - Update an approval rule
+ * @property {function(string): string} DELETE - Delete an approval rule
+ */
+export const DATA_QUERY_RULES = {
+  LIST: "/data-query-rules",
+  CREATE: "/data-query-rules",
+  UPDATE: (id) => `/data-query-rules/${id}`,
+  DELETE: (id) => `/data-query-rules/${id}`,
+};
+
+// ─── Data Query Executions Audit (Admin) ───────────────────────────────────────
+
+/**
+ * Data Query Execution audit log endpoints.
+ * @property {string} LIST - List all executions (Admin/DBA audit)
+ */
+export const DATA_QUERY_EXECUTIONS = {
+  LIST: "/data-query-executions",
+};

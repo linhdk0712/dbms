@@ -44,8 +44,12 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | `pages/maker/ChangeRequests.svelte` | `/change-requests` | Maker | List change requests (ManageEngine integration) |
 | `pages/checker/PendingList.svelte` | `/approvals` | Checker | List requests chờ duyệt |
 | `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + validate SQL + approve/reject (validate bắt buộc trước approve) |
+| `pages/data-queries/NewDataQuery.svelte` | `/data-queries/new` | Maker | Form tạo Data Query — Basic mode (table/columns/filters builder) + Advanced mode (free-form SQL), assign users, ticket ID, expiration |
+| `pages/data-queries/MyDataQueries.svelte` | `/data-queries` | Maker | List Data Queries của user |
+| `pages/data-queries/DataQueryDetail.svelte` | `/data-queries/:id` | Maker | Chi tiết Data Query, trạng thái phê duyệt |
 | `pages/admin/Databases.svelte` | `/admin/databases` | Admin | CRUD databases, test connection |
 | `pages/admin/Users.svelte` | `/admin/users` | Admin | Manage users + grant/revoke permissions |
+| `pages/admin/ApprovalMatrix.svelte` | `/admin/approval-matrix` | Admin | Cấu hình approval rules (multi-level) theo database/schema/table |
 
 ### Root
 | File | Thay đổi |
@@ -108,8 +112,12 @@ Hash-based routing (svelte-spa-router)
 #/change-requests    → ChangeRequests.svelte (Maker)
 #/approvals          → PendingList.svelte (Checker)
 #/approvals/:id      → ReviewDetail.svelte (Checker)
+#/data-queries/new   → NewDataQuery.svelte (Maker)
+#/data-queries       → MyDataQueries.svelte (Maker)
+#/data-queries/:id   → DataQueryDetail.svelte (Maker)
 #/admin/databases    → Databases.svelte (Admin)
 #/admin/users        → Users.svelte (Admin)
+#/admin/approval-matrix → ApprovalMatrix.svelte (Admin)
 ```
 
 ---
@@ -127,6 +135,10 @@ File `api/endpoints.js` định nghĩa tập trung tất cả endpoint paths:
 | `USERS` | Admin user management, permissions grant/revoke |
 | `DASHBOARD` | Role-aware statistics |
 | `CHANGE_REQUESTS` | CR list, create, detail, sync, delete (ManageEngine integration) |
+| `DATA_QUERIES` | Data Query Permission — list, create, get, update, submit, execute, executions |
+| `DATA_QUERY_APPROVALS` | Multi-level approval — pending list, approve, reject (ITO/ITS/Compliance) |
+| `DATA_QUERY_RULES` | Approval Matrix management — CRUD rules (Admin/DBA) |
+| `DATA_QUERY_EXECUTIONS` | Execution audit log (Admin/DBA) |
 
 ---
 

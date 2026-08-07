@@ -15,6 +15,19 @@ pub struct ExecutionResult {
     pub rows_affected: i64,
 }
 
+/// Kết quả truy vấn đọc (SELECT) — trả về dataset.
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    /// Tên các cột trong kết quả.
+    pub columns: Vec<String>,
+    /// Dữ liệu rows (mảng 2D — mỗi row là Vec<Value>).
+    pub rows: Vec<Vec<serde_json::Value>>,
+    /// Số rows trả về.
+    pub rows_returned: i64,
+    /// True nếu kết quả bị cắt do vượt max_rows.
+    pub truncated: bool,
+}
+
 /// Kết quả validate SQL (EXPLAIN) — không thực thi, chỉ kiểm tra.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ValidationResult {
@@ -227,6 +240,12 @@ pub async fn validate_sql(
 }
 
 /// Validate SQL trên PostgreSQL bằng EXPLAIN.
+///
+/// Kết nối PostgreSQL qua TLS (trừ khi `DISABLE_TARGET_DB_TLS=true`), sau đó
+/// chạy `EXPLAIN <statement>` cho từng statement. Phân tích execution plan để
+/// phát hiện cảnh báo hiệu năng (sequential scan, high cost).
+///
+/// Trả về [`ValidationResult`] gồm execution plan text và performance warnings.
 async fn validate_sql_postgres(
     sql: &str,
     credentials: &DbCredentials,
@@ -346,6 +365,12 @@ async fn validate_sql_postgres(
 }
 
 /// Validate SQL trên MySQL bằng EXPLAIN.
+///
+/// Kết nối MySQL qua TLS (trừ khi `DISABLE_TARGET_DB_TLS=true`), sau đó
+/// chạy `EXPLAIN <statement>` cho từng statement. Phân tích kết quả EXPLAIN
+/// để phát hiện full table scan và ước lượng rows quá cao.
+///
+/// Trả về [`ValidationResult`] gồm thông tin access type, key usage, và warnings.
 async fn validate_sql_mysql(
     sql: &str,
     credentials: &DbCredentials,
@@ -463,6 +488,10 @@ async fn validate_sql_mysql(
 }
 
 /// Validate SQL trên Oracle bằng EXPLAIN PLAN FOR.
+///
+/// Kết nối Oracle qua TCPS, chạy trên blocking thread (`spawn_blocking`) vì
+/// Oracle crate không hỗ trợ async. Delegate sang [`validate_sql_oracle_blocking`]
+/// để thực thi `EXPLAIN PLAN FOR` trên từng statement.
 async fn validate_sql_oracle(
     sql: &str,
     credentials: &DbCredentials,
@@ -703,4 +732,299 @@ fn validate_sql_mongodb(input: &str) -> ValidationResult {
             error: Some("Input must be a JSON object or array".to_string()),
         }
     }
+}
+
+/// Thực thi query read-only trên database đích — trả về dataset.
+///
+/// Khác với `execute_sql`:
+/// - Set `default_transaction_read_only = on` (PostgreSQL) để đảm bảo an toàn
+/// - Trả về columns + rows thay vì rows_affected
+/// - Giới hạn max rows (fetch max_rows + 1 để detect truncation)
+///
+/// # Parameters
+/// - `db_type` — Loại database
+/// - `sql` — Câu SELECT cần thực thi
+/// - `max_rows` — Giới hạn số rows trả về
+pub async fn execute_query_readonly(
+    db_type: &str,
+    sql: &str,
+    credentials: &DbCredentials,
+    host: &str,
+    port: i32,
+    database_name: &str,
+    schema_name: Option<&str>,
+    timeout: Duration,
+    max_rows: i64,
+) -> Result<QueryResult, ExecutorError> {
+    match db_type {
+        "postgresql" => {
+            execute_query_readonly_pg(sql, credentials, host, port, database_name, schema_name, timeout, max_rows).await
+        }
+        "mysql" => {
+            execute_query_readonly_mysql(sql, credentials, host, port, database_name, timeout, max_rows).await
+        }
+        _ => Err(ExecutorError::UnsupportedDbType(format!(
+            "{} read-only query not yet supported",
+            db_type
+        ))),
+    }
+}
+
+/// Thực thi câu SELECT read-only trên PostgreSQL.
+///
+/// Kết nối với `sslmode=require`, set `default_transaction_read_only = on` và
+/// `statement_timeout` cho an toàn. Fetch tối đa `max_rows + 1` rows để detect
+/// truncation. Kết quả được convert sang `serde_json::Value` (String, i64, f64, bool).
+///
+/// # Errors
+/// - [`ExecutorError::ConnectionFailed`] nếu không kết nối được
+/// - [`ExecutorError::QueryFailed`] nếu câu SQL lỗi
+/// - [`ExecutorError::Timeout`] nếu quá thời gian cho phép
+async fn execute_query_readonly_pg(
+    sql: &str,
+    credentials: &DbCredentials,
+    host: &str,
+    port: i32,
+    database_name: &str,
+    schema_name: Option<&str>,
+    timeout_duration: Duration,
+    max_rows: i64,
+) -> Result<QueryResult, ExecutorError> {
+    use sqlx::{Column, Row};
+    use tokio::time::timeout;
+
+    let tls_disabled = std::env::var("DISABLE_TARGET_DB_TLS")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+    let sslmode = if tls_disabled { "disable" } else { "require" };
+
+    let mut conn_str = format!(
+        "postgres://{}:{}@{}:{}/{}?sslmode={}",
+        urlencoding::encode(&credentials.username),
+        urlencoding::encode(&credentials.password),
+        host,
+        port,
+        database_name,
+        sslmode
+    );
+    if let Some(schema) = schema_name {
+        conn_str.push_str(&format!("&options=-c%20search_path%3D{schema}"));
+    }
+
+    let pool = match timeout(timeout_duration, async {
+        sqlx::postgres::PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect(&conn_str)
+            .await
+    })
+    .await
+    {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => return Err(ExecutorError::ConnectionFailed(e.to_string())),
+        Err(_) => return Err(ExecutorError::Timeout(timeout_duration.as_secs())),
+    };
+
+    // Set read-only transaction mode for safety
+    let _ = sqlx::query("SET default_transaction_read_only = on")
+        .execute(&pool)
+        .await;
+
+    // Set statement timeout
+    let timeout_ms = timeout_duration.as_millis();
+    let _ = sqlx::query(&format!("SET statement_timeout = '{timeout_ms}'"))
+        .execute(&pool)
+        .await;
+
+    // Execute query
+    let rows_result = match timeout(timeout_duration, async {
+        sqlx::query(sql).fetch_all(&pool).await
+    })
+    .await
+    {
+        Ok(Ok(rows)) => rows,
+        Ok(Err(e)) => {
+            pool.close().await;
+            return Err(ExecutorError::QueryFailed(e.to_string()));
+        }
+        Err(_) => {
+            pool.close().await;
+            return Err(ExecutorError::Timeout(timeout_duration.as_secs()));
+        }
+    };
+
+    pool.close().await;
+
+    // Extract column names
+    let columns: Vec<String> = if let Some(first_row) = rows_result.first() {
+        use sqlx::Row;
+        (0..first_row.len())
+            .map(|i| first_row.column(i).name().to_string())
+            .collect()
+    } else {
+        vec![]
+    };
+
+    // Convert rows to JSON values
+    let truncated = rows_result.len() as i64 > max_rows;
+    let take_count = (max_rows as usize).min(rows_result.len());
+
+    let rows: Vec<Vec<serde_json::Value>> = rows_result[..take_count]
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            (0..row.len())
+                .map(|i| {
+                    // Try different types
+                    if let Ok(v) = row.try_get::<Option<String>, _>(i) {
+                        v.map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
+                        v.map(|n| serde_json::Value::Number(n.into()))
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
+                        v.and_then(|n| serde_json::Number::from_f64(n))
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<Option<bool>, _>(i) {
+                        v.map(serde_json::Value::Bool)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else {
+                        serde_json::Value::Null
+                    }
+                })
+                .collect()
+        })
+        .collect();
+
+    let rows_returned = rows.len() as i64;
+
+    Ok(QueryResult {
+        columns,
+        rows,
+        rows_returned,
+        truncated,
+    })
+}
+
+/// Thực thi câu SELECT read-only trên MySQL.
+///
+/// Kết nối với `ssl-mode=REQUIRED`, set `SESSION TRANSACTION READ ONLY` cho an toàn.
+/// Fetch tối đa `max_rows` rows, detect truncation nếu vượt quá giới hạn.
+/// Kết quả được convert sang `serde_json::Value` (String, i64, f64, bool).
+///
+/// # Errors
+/// - [`ExecutorError::ConnectionFailed`] nếu không kết nối được
+/// - [`ExecutorError::QueryFailed`] nếu câu SQL lỗi
+/// - [`ExecutorError::Timeout`] nếu quá thời gian cho phép
+async fn execute_query_readonly_mysql(
+    sql: &str,
+    credentials: &DbCredentials,
+    host: &str,
+    port: i32,
+    database_name: &str,
+    timeout_duration: Duration,
+    max_rows: i64,
+) -> Result<QueryResult, ExecutorError> {
+    use sqlx::{Column, Row};
+    use tokio::time::timeout;
+
+    let tls_disabled = std::env::var("DISABLE_TARGET_DB_TLS")
+        .unwrap_or_default()
+        .eq_ignore_ascii_case("true");
+    let ssl_param = if tls_disabled { "" } else { "?ssl-mode=REQUIRED" };
+
+    let conn_str = format!(
+        "mysql://{}:{}@{}:{}/{}{}",
+        urlencoding::encode(&credentials.username),
+        urlencoding::encode(&credentials.password),
+        host,
+        port,
+        database_name,
+        ssl_param
+    );
+
+    let pool = match timeout(timeout_duration, async {
+        sqlx::mysql::MySqlPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect(&conn_str)
+            .await
+    })
+    .await
+    {
+        Ok(Ok(p)) => p,
+        Ok(Err(e)) => return Err(ExecutorError::ConnectionFailed(e.to_string())),
+        Err(_) => return Err(ExecutorError::Timeout(timeout_duration.as_secs())),
+    };
+
+    // Set read-only
+    let _ = sqlx::query("SET SESSION TRANSACTION READ ONLY")
+        .execute(&pool)
+        .await;
+
+    // Execute query
+    let rows_result = match timeout(timeout_duration, async {
+        sqlx::query(sql).fetch_all(&pool).await
+    })
+    .await
+    {
+        Ok(Ok(rows)) => rows,
+        Ok(Err(e)) => {
+            pool.close().await;
+            return Err(ExecutorError::QueryFailed(e.to_string()));
+        }
+        Err(_) => {
+            pool.close().await;
+            return Err(ExecutorError::Timeout(timeout_duration.as_secs()));
+        }
+    };
+
+    pool.close().await;
+
+    // Extract column names
+    let columns: Vec<String> = if let Some(first_row) = rows_result.first() {
+        use sqlx::Row;
+        (0..first_row.len())
+            .map(|i| first_row.column(i).name().to_string())
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let truncated = rows_result.len() as i64 > max_rows;
+    let take_count = (max_rows as usize).min(rows_result.len());
+
+    let rows: Vec<Vec<serde_json::Value>> = rows_result[..take_count]
+        .iter()
+        .map(|row| {
+            use sqlx::Row;
+            (0..row.len())
+                .map(|i| {
+                    if let Ok(v) = row.try_get::<Option<String>, _>(i) {
+                        v.map(serde_json::Value::String)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<Option<i64>, _>(i) {
+                        v.map(|n| serde_json::Value::Number(n.into()))
+                            .unwrap_or(serde_json::Value::Null)
+                    } else if let Ok(v) = row.try_get::<Option<f64>, _>(i) {
+                        v.and_then(|n| serde_json::Number::from_f64(n))
+                            .map(serde_json::Value::Number)
+                            .unwrap_or(serde_json::Value::Null)
+                    } else {
+                        serde_json::Value::Null
+                    }
+                })
+                .collect()
+        })
+        .collect();
+
+    let rows_returned = rows.len() as i64;
+
+    Ok(QueryResult {
+        columns,
+        rows,
+        rows_returned,
+        truncated,
+    })
 }

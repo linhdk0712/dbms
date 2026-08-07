@@ -1,6 +1,9 @@
 pub mod audit;
 pub mod change_requests;
 pub mod dashboard;
+pub mod data_queries;
+pub mod data_query_approvals;
+pub mod data_query_rules;
 pub mod databases;
 pub mod permissions;
 pub mod requests;

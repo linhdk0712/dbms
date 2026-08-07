@@ -50,6 +50,18 @@
 | Unit 3: Core Business | Code Generation | ✅ COMPLETED | Build PASS, 41/41 tests PASS |
 | Unit 4: Frontend | Code Generation | ✅ COMPLETED | Build PASS (vite build) |
 
+## Data Query Permission Feature
+- **Status**: IN PROGRESS — backend API handlers created
+- **Migration**: `010_create_data_queries.sql` ✅
+- **Design Doc**: `aidlc-docs/construction/data-query-permission-best-practices.md` ✅
+- **Tables Created**: data_query_requests, data_query_assigned_users, data_query_approval_rules, data_query_approval_levels, data_query_approval_tracking, data_query_executions
+- **Backend API Handlers**: ✅
+  - `api/data_queries.rs` — create, list, get_detail, update, submit, execute, list_executions
+  - `api/data_query_approvals.rs` — list_pending, approve, reject
+  - `api/data_query_rules.rs` — list_rules, create_rule, update_rule, delete_rule
+- **Routes wired** in `api/mod.rs` ✅
+- **Remaining**: DB layer functions (`db/data_queries.rs`, `db/data_query_approvals.rs`, `db/data_query_rules.rs`), models (`models/data_query.rs`), executor read-only method, frontend pages
+
 ## Build Environment
 - **Toolchain**: `stable-x86_64-pc-windows-gnu` (máy không có MSVC linker)
 - **C Compiler**: WinLibs MinGW-w64 gcc 16.1.0 (cần cho `ring` — dep của rustls/jsonwebtoken)

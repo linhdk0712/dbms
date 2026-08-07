@@ -175,6 +175,20 @@ pub async fn get_by_id(pool: &PgPool, user_id: Uuid) -> Result<Option<User>, sql
     .await
 }
 
+/// Lấy display_name của user theo ID. Trả về email nếu display_name trống.
+pub async fn get_display_name(pool: &PgPool, user_id: Uuid) -> Result<String, sqlx::Error> {
+    let user = get_by_id(pool, user_id).await?;
+    Ok(user
+        .map(|u| {
+            if u.display_name.is_empty() {
+                u.email
+            } else {
+                u.display_name
+            }
+        })
+        .unwrap_or_else(|| user_id.to_string()))
+}
+
 /// Cập nhật trạng thái active/inactive cho user.
 pub async fn update_active_status(
     pool: &PgPool,

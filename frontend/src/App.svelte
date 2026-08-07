@@ -19,6 +19,13 @@
   import AdminUsers from "./pages/admin/Users.svelte";
   import ChangeRequests from "./pages/maker/ChangeRequests.svelte";
 
+  // Data Query pages
+  import NewDataQuery from "./pages/data-queries/NewDataQuery.svelte";
+  import MyDataQueries from "./pages/data-queries/MyDataQueries.svelte";
+  import DataQueryDetail from "./pages/data-queries/DataQueryDetail.svelte";
+  import DataQueryApprovals from "./pages/data-queries/DataQueryApprovals.svelte";
+  import ApprovalMatrix from "./pages/admin/ApprovalMatrix.svelte";
+
   const routes = {
     "/login": Login,
     "/auth/callback": AuthCallback,
@@ -31,6 +38,12 @@
     "/approvals/:id": ReviewDetail,
     "/admin/databases": AdminDatabases,
     "/admin/users": AdminUsers,
+    // Data Query routes
+    "/data-queries/new": NewDataQuery,
+    "/data-queries": MyDataQueries,
+    "/data-queries/:id": DataQueryDetail,
+    "/data-query-approvals": DataQueryApprovals,
+    "/admin/approval-matrix": ApprovalMatrix,
   };
 
   // Auth guard — redirect to login if not authenticated

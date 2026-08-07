@@ -4,6 +4,9 @@ pub mod audit;
 pub mod auth;
 pub mod change_requests;
 pub mod dashboard;
+pub mod data_queries;
+pub mod data_query_approvals;
+pub mod data_query_rules;
 pub mod databases;
 pub mod health;
 pub mod ip_extractor;
@@ -94,6 +97,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/users/:user_id/permissions", get(users::get_user_permissions))
         .route("/api/v1/users/:user_id/permissions", post(users::grant_permission))
         .route("/api/v1/users/:user_id/permissions/:database_id", delete(users::revoke_permission))
+        // Data Queries
+        .route("/api/v1/data-queries", post(data_queries::create))
+        .route("/api/v1/data-queries", get(data_queries::list))
+        .route("/api/v1/data-queries/:id", get(data_queries::get_detail))
+        .route("/api/v1/data-queries/:id", axum::routing::put(data_queries::update))
+        .route("/api/v1/data-queries/:id/submit", post(data_queries::submit))
+        .route("/api/v1/data-queries/:id/execute", post(data_queries::execute))
+        .route("/api/v1/data-queries/:id/executions", get(data_queries::list_executions))
+        // Data Query Approvals
+        .route("/api/v1/data-query-approvals/pending", get(data_query_approvals::list_pending))
+        .route("/api/v1/data-queries/:id/approve", post(data_query_approvals::approve))
+        .route("/api/v1/data-queries/:id/reject", post(data_query_approvals::reject))
+        // Data Query Rules (Admin/DBA)
+        .route("/api/v1/data-query-rules", get(data_query_rules::list_rules))
+        .route("/api/v1/data-query-rules", post(data_query_rules::create_rule))
+        .route("/api/v1/data-query-rules/:id", axum::routing::put(data_query_rules::update_rule))
+        .route("/api/v1/data-query-rules/:id", delete(data_query_rules::delete_rule))
         .layer(axum_mw::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

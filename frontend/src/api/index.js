@@ -24,6 +24,10 @@ import {
   USERS,
   DASHBOARD,
   CHANGE_REQUESTS,
+  DATA_QUERIES,
+  DATA_QUERY_APPROVALS,
+  DATA_QUERY_RULES,
+  DATA_QUERY_EXECUTIONS,
 } from "./endpoints.js";
 
 // ─── Base Config ───────────────────────────────────────────────────────────────
@@ -316,6 +320,110 @@ const changeRequests = {
   },
 };
 
+// ─── Data Queries ──────────────────────────────────────────────────────────────
+
+const dataQueries = {
+  /** Tạo data query request mới (Basic hoặc Advanced mode) */
+  async create(payload) {
+    return apiFetch(DATA_QUERIES.CREATE, { method: "POST", body: payload });
+  },
+
+  /** Danh sách data query requests (pagination + filter) */
+  async list({ status, page = 1, per_page = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (status) params.set("status", status);
+    params.set("page", page);
+    params.set("per_page", per_page);
+    return apiFetch(`${DATA_QUERIES.LIST}?${params}`);
+  },
+
+  /** Chi tiết data query request */
+  async get(id) {
+    return apiFetch(DATA_QUERIES.GET(id));
+  },
+
+  /** Update draft data query */
+  async update(id, payload) {
+    return apiFetch(DATA_QUERIES.UPDATE(id), { method: "PUT", body: payload });
+  },
+
+  /** Submit draft → PENDING_APPROVAL */
+  async submit(id) {
+    return apiFetch(DATA_QUERIES.SUBMIT(id), { method: "POST" });
+  },
+
+  /** Execute approved query */
+  async execute(id) {
+    return apiFetch(DATA_QUERIES.EXECUTE(id), { method: "POST" });
+  },
+
+  /** Lấy execution history của một query */
+  async executions(id) {
+    return apiFetch(DATA_QUERIES.EXECUTIONS(id));
+  },
+};
+
+// ─── Data Query Approvals ──────────────────────────────────────────────────────
+
+const dataQueryApprovals = {
+  /** Danh sách data queries chờ duyệt (theo unit của user) */
+  async pending() {
+    return apiFetch(DATA_QUERY_APPROVALS.PENDING);
+  },
+
+  /** Approve data query at current level */
+  async approve(id, comment) {
+    return apiFetch(DATA_QUERY_APPROVALS.APPROVE(id), {
+      method: "POST",
+      body: { comment },
+    });
+  },
+
+  /** Reject data query */
+  async reject(id, comment) {
+    return apiFetch(DATA_QUERY_APPROVALS.REJECT(id), {
+      method: "POST",
+      body: { comment },
+    });
+  },
+};
+
+// ─── Data Query Rules (Approval Matrix) ────────────────────────────────────────
+
+const dataQueryRules = {
+  /** Danh sách approval rules */
+  async list() {
+    return apiFetch(DATA_QUERY_RULES.LIST);
+  },
+
+  /** Tạo rule mới */
+  async create(payload) {
+    return apiFetch(DATA_QUERY_RULES.CREATE, { method: "POST", body: payload });
+  },
+
+  /** Cập nhật rule */
+  async update(id, payload) {
+    return apiFetch(DATA_QUERY_RULES.UPDATE(id), { method: "PUT", body: payload });
+  },
+
+  /** Xóa rule */
+  async delete(id) {
+    return apiFetch(DATA_QUERY_RULES.DELETE(id), { method: "DELETE" });
+  },
+};
+
+// ─── Data Query Executions Audit ───────────────────────────────────────────────
+
+const dataQueryExecutions = {
+  /** Audit log tất cả executions (Admin/DBA) */
+  async list({ page = 1, per_page = 50 } = {}) {
+    const params = new URLSearchParams();
+    params.set("page", page);
+    params.set("per_page", per_page);
+    return apiFetch(`${DATA_QUERY_EXECUTIONS.LIST}?${params}`);
+  },
+};
+
 // ─── Export tập trung ──────────────────────────────────────────────────────────
 
 export const api = {
@@ -326,6 +434,10 @@ export const api = {
   users,
   dashboard,
   changeRequests,
+  dataQueries,
+  dataQueryApprovals,
+  dataQueryRules,
+  dataQueryExecutions,
 };
 
 export default api;
