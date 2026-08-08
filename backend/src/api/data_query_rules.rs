@@ -5,13 +5,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::auth::extractors::RequireAdmin;
+use crate::auth::extractors::RequireApprover;
 use crate::db;
 use crate::error::AppError;
 use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
+/// Request body for creating a new data query approval rule.
 #[derive(Debug, Deserialize)]
 pub struct CreateRuleBody {
     pub database_id: Uuid,
@@ -20,6 +21,7 @@ pub struct CreateRuleBody {
     pub levels: Vec<RuleLevelInput>,
 }
 
+/// Request body for updating an existing data query approval rule.
 #[derive(Debug, Deserialize)]
 pub struct UpdateRuleBody {
     pub schema_name: Option<String>,
@@ -27,6 +29,7 @@ pub struct UpdateRuleBody {
     pub levels: Vec<RuleLevelInput>,
 }
 
+/// Input representation of a single approval level within a rule.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct RuleLevelInput {
     pub level_order: i32,
@@ -35,10 +38,12 @@ pub struct RuleLevelInput {
     pub required: bool,
 }
 
+/// Returns the default value (`true`) for the `required` field in [`RuleLevelInput`].
 fn default_required() -> bool {
     true
 }
 
+/// Response representation of a data query approval rule, including its levels.
 #[derive(Debug, Serialize)]
 pub struct RuleResponse {
     pub id: Uuid,
@@ -51,6 +56,7 @@ pub struct RuleResponse {
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Output representation of a single approval level within a rule response.
 #[derive(Debug, Serialize)]
 pub struct RuleLevelOutput {
     pub level_order: i32,
@@ -60,10 +66,10 @@ pub struct RuleLevelOutput {
 
 // ── Handlers ───────────────────────────────────────────────────────────
 
-/// `GET /api/v1/data-query-rules` — List all rules (Admin/DBA only).
+/// `GET /api/v1/data-query-rules` — List all rules (Approver only).
 pub async fn list_rules(
     State(state): State<AppState>,
-    RequireAdmin(_claims): RequireAdmin,
+    RequireApprover(_claims): RequireApprover,
 ) -> Result<Json<Vec<RuleResponse>>, AppError> {
     let rules = db::data_query_rules::list_rules(&state.db)
         .await
@@ -97,10 +103,10 @@ pub async fn list_rules(
     Ok(Json(response))
 }
 
-/// `POST /api/v1/data-query-rules` — Create new rule (Admin/DBA only).
+/// `POST /api/v1/data-query-rules` — Create new rule (Approver only).
 pub async fn create_rule(
     State(state): State<AppState>,
-    RequireAdmin(claims): RequireAdmin,
+    RequireApprover(claims): RequireApprover,
     Json(body): Json<CreateRuleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     if body.levels.is_empty() {
@@ -132,10 +138,10 @@ pub async fn create_rule(
     })))
 }
 
-/// `PUT /api/v1/data-query-rules/:id` — Update rule (Admin/DBA only).
+/// `PUT /api/v1/data-query-rules/:id` — Update rule (Approver only).
 pub async fn update_rule(
     State(state): State<AppState>,
-    RequireAdmin(_claims): RequireAdmin,
+    RequireApprover(_claims): RequireApprover,
     Path(id): Path<Uuid>,
     Json(body): Json<UpdateRuleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
@@ -167,10 +173,10 @@ pub async fn update_rule(
     })))
 }
 
-/// `DELETE /api/v1/data-query-rules/:id` — Delete rule (Admin/DBA only).
+/// `DELETE /api/v1/data-query-rules/:id` — Delete rule (Approver only).
 pub async fn delete_rule(
     State(state): State<AppState>,
-    RequireAdmin(_claims): RequireAdmin,
+    RequireApprover(_claims): RequireApprover,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     db::data_query_rules::delete_rule(&state.db, id)

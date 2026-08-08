@@ -81,6 +81,8 @@ export const APPROVALS = {
  * @property {function(string): string} GET - Get database connection detail by ID
  * @property {function(string): string} UPDATE - Update database connection by ID
  * @property {function(string): string} TEST - Test connectivity for an existing connection
+ * @property {function(string): string} TABLES - List tables/collections for a database connection
+ * @property {function(string): string} COLUMNS - List columns/fields for a database connection
  */
 export const DATABASES = {
   LIST: "/databases",
@@ -90,6 +92,8 @@ export const DATABASES = {
   GET: (id) => `/databases/${id}`,
   UPDATE: (id) => `/databases/${id}`,
   TEST: (id) => `/databases/${id}/test`,
+  TABLES: (id) => `/databases/${id}/tables`,
+  COLUMNS: (id) => `/databases/${id}/columns`,
 };
 
 // ─── Users (Admin) ─────────────────────────────────────────────────────────────
@@ -101,6 +105,8 @@ export const DATABASES = {
  * @property {function(string): string} UPDATE - Update user roles/status by ID
  * @property {function(string): string} PERMISSIONS - List/grant permissions for a user
  * @property {function(string, string): string} REVOKE_PERMISSION - Revoke a user's permission on a specific database
+ * @property {function(string): string} APPROVER_UNITS - List approver units assigned to a user
+ * @property {function(string, string): string} UNASSIGN_UNIT - Unassign an approver unit from a user
  */
 export const USERS = {
   LIST: "/users",
@@ -109,6 +115,24 @@ export const USERS = {
   PERMISSIONS: (userId) => `/users/${userId}/permissions`,
   REVOKE_PERMISSION: (userId, databaseId) =>
     `/users/${userId}/permissions/${databaseId}`,
+  APPROVER_UNITS: (userId) => `/users/${userId}/approver-units`,
+  UNASSIGN_UNIT: (userId, unitId) => `/users/${userId}/approver-units/${unitId}`,
+};
+
+// ─── Approver Units ────────────────────────────────────────────────────────────
+
+/**
+ * Approver Units management endpoint paths (Admin).
+ * @property {string} LIST - List all approver units
+ * @property {string} CREATE - Create a new approver unit
+ * @property {function(string): string} UPDATE - Update an approver unit
+ * @property {function(string): string} DELETE - Delete an approver unit
+ */
+export const APPROVER_UNITS = {
+  LIST: "/approver-units",
+  CREATE: "/approver-units",
+  UPDATE: (id) => `/approver-units/${id}`,
+  DELETE: (id) => `/approver-units/${id}`,
 };
 
 // ─── Dashboard ─────────────────────────────────────────────────────────────────

@@ -18,11 +18,19 @@ User {
 - User ←→ UserDbPermission (many-to-many với DatabaseConnection qua permission table)
 - User → SqlRequest (created_by, approved_by)
 - User → AuditLog (actor_id)
+- User ←→ ApproverUnit (many-to-many qua approver_unit_members)
+
+**Roles** (DB constraint: `user_roles_role_check`):
+- `ADMIN` — Quản lý users, database connections, cấu hình hệ thống
+- `MAKER` — Tạo và gửi SQL request
+- `CHECKER` — Review và approve/reject request
+- `APPROVER` — Quản lý Approval Matrix và Approver Units; có thể approve Data Queries
 
 **Notes**:
 - Không có password — auth qua OIDC
 - `oidc_subject` = `sub` claim từ JWT của SSO provider
 - Soft delete: `is_active = false` thay vì DELETE để giữ referential integrity
+- Một user có thể có nhiều role đồng thời
 
 ---
 

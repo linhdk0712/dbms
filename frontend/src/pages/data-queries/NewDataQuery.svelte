@@ -20,7 +20,10 @@
 
   // Basic mode state
   let tableName = "";
+  let availableTables = [];
+  let loadingTables = false;
   let availableColumns = [];
+  let loadingColumns = false;
   let selectedColumns = [];
   let filters = [];
   let queryLimit = 1000;
@@ -52,6 +55,57 @@
       loadingUsers = false;
     }
   });
+
+  // Auto-load tables when database or schema changes
+  $: if (databaseId) {
+    loadTables(databaseId, schemaName);
+  }
+
+  // Auto-load columns when table changes
+  $: if (databaseId && tableName) {
+    loadColumns(databaseId, tableName, schemaName);
+  }
+
+  /**
+   * Loads tables from the target database when database/schema is selected.
+   */
+  async function loadTables(dbId, schema) {
+    if (!dbId) return;
+    loadingTables = true;
+    availableTables = [];
+    tableName = "";
+    availableColumns = [];
+    selectedColumns = [];
+    try {
+      const result = await api.databases.listTables(dbId, schema || undefined);
+      availableTables = result.tables || [];
+    } catch (e) {
+      availableTables = [];
+      if (e.error) {
+        toastStore.warning(`Không thể load tables: ${e.error}`);
+      }
+    } finally {
+      loadingTables = false;
+    }
+  }
+
+  /**
+   * Loads columns from the target database when a table is selected.
+   */
+  async function loadColumns(dbId, table, schema) {
+    if (!dbId || !table) return;
+    loadingColumns = true;
+    availableColumns = [];
+    selectedColumns = [];
+    try {
+      const result = await api.databases.listColumns(dbId, table, schema || undefined);
+      availableColumns = result.columns || [];
+    } catch (e) {
+      availableColumns = [];
+    } finally {
+      loadingColumns = false;
+    }
+  }
 
   // Auto-generate SQL in Basic mode
   $: if (queryMode === "BASIC" && tableName && selectedColumns.length > 0) {
@@ -239,28 +293,99 @@
 
         <div class="form-control">
           <label class="label" for="schema"><span class="label-text">Schema</span></label>
-          <input id="schema" type="text" class="input input-bordered w-full" placeholder="e.g. customer" bind:value={schemaName} />
+          <input
+            id="schema"
+            type="text"
+            class="input input-bordered w-full"
+            placeholder="e.g. customer"
+            bind:value={schemaName}
+            on:blur={() => { if (databaseId) loadTables(databaseId, schemaName); }}
+          />
         </div>
       </div>
 
       {#if queryMode === "BASIC"}
         <!-- Basic Mode: Table & Column Selection -->
         <div class="form-control">
-          <label class="label" for="table"><span class="label-text">Table</span></label>
-          <input id="table" type="text" class="input input-bordered w-full" placeholder="e.g. transactions" bind:value={tableName} />
+          <label class="label" for="table">
+            <span class="label-text">Table</span>
+            {#if loadingTables}
+              <span class="loading loading-spinner loading-xs"></span>
+            {/if}
+          </label>
+          {#if availableTables.length > 0}
+            <select id="table" class="select select-bordered w-full" bind:value={tableName}>
+              <option value="" disabled>Chọn table...</option>
+              {#each availableTables as t}
+                <option value={t}>{t}</option>
+              {/each}
+            </select>
+          {:else}
+            <input id="table" type="text" class="input input-bordered w-full" placeholder="e.g. transactions" bind:value={tableName} />
+            {#if databaseId && !loadingTables}
+              <label class="label"><span class="label-text-alt text-warning">Không thể load tables — nhập tên thủ công</span></label>
+            {/if}
+          {/if}
         </div>
 
         <div class="form-control">
-          <label class="label"><span class="label-text">Columns (nhập tên, cách nhau bởi dấu phẩy)</span></label>
-          <input
-            type="text"
-            class="input input-bordered w-full"
-            placeholder="id, amount, status, created_at"
-            on:change={(e) => {
-              selectedColumns = e.target.value.split(",").map((c) => c.trim()).filter(Boolean);
-            }}
-            value={selectedColumns.join(", ")}
-          />
+          <label class="label">
+            <span class="label-text">Columns</span>
+            {#if loadingColumns}
+              <span class="loading loading-spinner loading-xs"></span>
+            {/if}
+          </label>
+          {#if availableColumns.length > 0}
+            <div class="border border-base-300 rounded-lg p-3 max-h-48 overflow-y-auto">
+              <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  class="checkbox checkbox-sm checkbox-primary"
+                  checked={selectedColumns.length === availableColumns.length}
+                  on:change={() => {
+                    if (selectedColumns.length === availableColumns.length) {
+                      selectedColumns = [];
+                    } else {
+                      selectedColumns = availableColumns.map(c => c.name);
+                    }
+                  }}
+                />
+                <span class="text-sm font-medium">Chọn tất cả</span>
+              </label>
+              <div class="divider my-1"></div>
+              {#each availableColumns as col}
+                <label class="flex items-center gap-2 py-0.5 cursor-pointer hover:bg-base-200 rounded px-1">
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-xs checkbox-primary"
+                    checked={selectedColumns.includes(col.name)}
+                    on:change={() => toggleColumn(col.name)}
+                  />
+                  <span class="text-sm flex-1">{col.name}</span>
+                  <span class="text-xs text-base-content/50">{col.data_type}</span>
+                  {#if col.is_primary_key}
+                    <span class="badge badge-xs badge-warning">PK</span>
+                  {/if}
+                </label>
+              {/each}
+            </div>
+            {#if selectedColumns.length > 0}
+              <label class="label"><span class="label-text-alt">{selectedColumns.length} cột đã chọn</span></label>
+            {/if}
+          {:else}
+            <input
+              type="text"
+              class="input input-bordered w-full"
+              placeholder="id, amount, status, created_at"
+              on:change={(e) => {
+                selectedColumns = e.target.value.split(",").map((c) => c.trim()).filter(Boolean);
+              }}
+              value={selectedColumns.join(", ")}
+            />
+            {#if tableName && !loadingColumns}
+              <label class="label"><span class="label-text-alt text-warning">Không thể load columns — nhập tên thủ công</span></label>
+            {/if}
+          {/if}
         </div>
 
         <!-- Filters -->

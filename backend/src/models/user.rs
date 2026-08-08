@@ -11,6 +11,7 @@ pub enum Role {
     Admin,
     Maker,
     Checker,
+    Approver,
 }
 
 impl std::fmt::Display for Role {
@@ -19,6 +20,7 @@ impl std::fmt::Display for Role {
             Role::Admin => write!(f, "ADMIN"),
             Role::Maker => write!(f, "MAKER"),
             Role::Checker => write!(f, "CHECKER"),
+            Role::Approver => write!(f, "APPROVER"),
         }
     }
 }

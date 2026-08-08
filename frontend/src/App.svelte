@@ -25,6 +25,7 @@
   import DataQueryDetail from "./pages/data-queries/DataQueryDetail.svelte";
   import DataQueryApprovals from "./pages/data-queries/DataQueryApprovals.svelte";
   import ApprovalMatrix from "./pages/admin/ApprovalMatrix.svelte";
+  import ApproverUnits from "./pages/admin/ApproverUnits.svelte";
 
   const routes = {
     "/login": Login,
@@ -44,6 +45,7 @@
     "/data-queries/:id": DataQueryDetail,
     "/data-query-approvals": DataQueryApprovals,
     "/admin/approval-matrix": ApprovalMatrix,
+    "/admin/approver-units": ApproverUnits,
   };
 
   // Auth guard — redirect to login if not authenticated

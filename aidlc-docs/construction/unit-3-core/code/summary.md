@@ -24,6 +24,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | `db/permissions.rs` | check_permission, grant, revoke, list_user_permissions, list_database_users |
 | `db/dashboard.rs` | Dashboard stats queries: `get_admin_stats()` (global counts), `count_pending_for_review(checker_id)`, `count_approved_by_checker(checker_id)`, `count_rejected_by_checker(checker_id)`, `get_maker_stats(maker_id)` (filtered counts) |
 | `db/change_requests.rs` | CRUD cho bảng change_requests (CR integration): create (upsert on cr_number), get_by_id, get_by_cr_number, list_all (paginated), count_all, update_from_sync (refresh metadata từ ManageEngine), delete, count_requests (đếm sql_requests gắn CR) |
+| `db/approver_units.rs` | CRUD cho approver_units: list_all, list_active, create, update, delete. User-Unit assignments: get_user_units (names), get_user_unit_details (full), assign_user (ON CONFLICT DO NOTHING), unassign_user |
 
 ### Backend — AI Module
 | File | Mô tả |
@@ -54,6 +55,8 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET detail, PATCH update (active status + roles), GET/POST/DELETE permissions |
 | `api/dashboard.rs` | GET dashboard stats — thin handler delegating to `db::dashboard` module |
+| `api/schema_browser.rs` | Schema Browser: GET tables (list tables/collections from target DB), GET columns (list columns for a table). Supports PostgreSQL, MySQL, Oracle (placeholder), MongoDB. Permission-gated per database. |
+| `api/approver_units.rs` | Approver Units: GET list (all authenticated), POST create (Admin), PUT update (Admin), DELETE (Admin). User assignments: GET user units, POST assign (Admin), DELETE unassign (Admin). Validation: name 1-50 chars, duplicate check. |
 
 ### Backend — WebSocket
 | File | Mô tả |
@@ -64,7 +67,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | File | Thay đổi |
 |------|----------|
 | `main.rs` | Thêm `mod executor`, `mod ws` |
-| `api/mod.rs` | Wire tất cả routes (public + protected), ~20 endpoints |
+| `api/mod.rs` | Wire tất cả routes (public + protected), includes approver_units module |
 | `Cargo.toml` | Thêm `urlencoding` |
 
 ---
@@ -110,6 +113,15 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | GET | `/api/v1/users/:id/permissions` | Admin | user permissions |
 | POST | `/api/v1/users/:id/permissions` | Admin | grant permission |
 | DELETE | `/api/v1/users/:id/permissions/:db_id` | Admin | revoke permission |
+| GET | `/api/v1/databases/:id/tables` | Any (perm) | list tables/collections from target DB |
+| GET | `/api/v1/databases/:id/columns` | Any (perm) | list columns for a table in target DB |
+| GET | `/api/v1/approver-units` | Any | list all approver units |
+| POST | `/api/v1/approver-units` | Admin | create approver unit |
+| PUT | `/api/v1/approver-units/:id` | Admin | update approver unit |
+| DELETE | `/api/v1/approver-units/:id` | Admin | delete approver unit |
+| GET | `/api/v1/users/:user_id/approver-units` | Any | get user's approver units |
+| POST | `/api/v1/users/:user_id/approver-units` | Admin | assign unit to user |
+| DELETE | `/api/v1/users/:user_id/approver-units/:unit_id` | Admin | unassign unit from user |
 
 ---
 

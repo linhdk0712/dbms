@@ -105,6 +105,32 @@ impl FromRequestParts<AppState> for RequireChecker {
     }
 }
 
+/// Extractor yêu cầu user phải có role Approver (hoặc Admin).
+/// Approver role cho phép truy cập quản lý Approval Matrix và Approver Units.
+pub struct RequireApprover(pub Claims);
+
+#[async_trait]
+impl FromRequestParts<AppState> for RequireApprover {
+    type Rejection = AppError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        _state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let claims = parts
+            .extensions
+            .get::<Claims>()
+            .cloned()
+            .ok_or(AppError::Unauthorized)?;
+
+        if !claims.has_role(&Role::Approver) && !claims.has_role(&Role::Admin) {
+            return Err(AppError::Forbidden);
+        }
+
+        Ok(RequireApprover(claims))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

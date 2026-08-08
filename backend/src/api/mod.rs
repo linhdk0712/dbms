@@ -1,5 +1,6 @@
 pub mod analysis;
 pub mod approvals;
+pub mod approver_units;
 pub mod audit;
 pub mod auth;
 pub mod change_requests;
@@ -11,6 +12,7 @@ pub mod databases;
 pub mod health;
 pub mod ip_extractor;
 pub mod requests;
+pub mod schema_browser;
 pub mod users;
 
 use axum::{
@@ -114,6 +116,18 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/data-query-rules", post(data_query_rules::create_rule))
         .route("/api/v1/data-query-rules/:id", axum::routing::put(data_query_rules::update_rule))
         .route("/api/v1/data-query-rules/:id", delete(data_query_rules::delete_rule))
+        // Schema Browser (browse tables/columns from target DB)
+        .route("/api/v1/databases/:id/tables", get(schema_browser::list_tables))
+        .route("/api/v1/databases/:id/columns", get(schema_browser::list_columns))
+        // Approver Units
+        .route("/api/v1/approver-units", get(approver_units::list_units))
+        .route("/api/v1/approver-units", post(approver_units::create_unit))
+        .route("/api/v1/approver-units/:id", axum::routing::put(approver_units::update_unit))
+        .route("/api/v1/approver-units/:id", delete(approver_units::delete_unit))
+        // User Approver Unit assignments
+        .route("/api/v1/users/:user_id/approver-units", get(approver_units::get_user_units))
+        .route("/api/v1/users/:user_id/approver-units", post(approver_units::assign_unit))
+        .route("/api/v1/users/:user_id/approver-units/:unit_id", delete(approver_units::unassign_unit))
         .layer(axum_mw::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()

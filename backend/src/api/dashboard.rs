@@ -60,6 +60,8 @@ impl DashboardStats {
 fn determine_effective_role(roles: &[Role]) -> Option<&Role> {
     if roles.contains(&Role::Admin) {
         Some(&Role::Admin)
+    } else if roles.contains(&Role::Approver) {
+        Some(&Role::Approver)
     } else if roles.contains(&Role::Checker) {
         Some(&Role::Checker)
     } else if roles.contains(&Role::Maker) {
@@ -84,6 +86,7 @@ pub async fn get_stats(
         Some(Role::Admin) => get_admin_stats(&state).await,
         Some(Role::Checker) => get_checker_stats(&state, claims.user_id).await,
         Some(Role::Maker) => get_maker_stats(&state, claims.user_id).await,
+        Some(Role::Approver) => get_checker_stats(&state, claims.user_id).await,
         None => Ok(Json(DashboardStats::empty())),
     }
 }

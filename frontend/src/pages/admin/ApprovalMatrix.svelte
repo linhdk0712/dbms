@@ -18,11 +18,29 @@
     levels: [{ level_order: 1, approver_unit: "ITO", required: true }],
   };
 
-  const approverUnits = ["ITO", "ITS", "COMPLIANCE"];
+  const approverUnits = [];
+  let approverUnitsLoaded = false;
 
   onMount(async () => {
-    await Promise.all([loadRules(), loadDatabases()]);
+    await Promise.all([loadRules(), loadDatabases(), loadApproverUnits()]);
   });
+
+  /**
+   * Tải danh sách approver units từ API.
+   * @returns {Promise<void>}
+   */
+  async function loadApproverUnits() {
+    try {
+      const result = await api.approverUnits.list();
+      approverUnits.length = 0;
+      (result || []).filter(u => u.is_active).forEach(u => approverUnits.push(u.name));
+      approverUnitsLoaded = true;
+    } catch (e) {
+      // Fallback nếu không load được
+      approverUnits.push("ITO", "ITS", "COMPLIANCE");
+      approverUnitsLoaded = true;
+    }
+  }
 
   /**
    * Tải danh sách approval rules từ API và cập nhật state.
@@ -287,7 +305,7 @@
         <div class="form-control">
           <label class="label">
             <span class="label-text">Approval Levels</span>
-            {#if newRule.levels.length < 3}
+            {#if newRule.levels.length < approverUnits.length}
               <button class="btn btn-xs btn-ghost" on:click={addLevel}>+ Thêm level</button>
             {/if}
           </label>

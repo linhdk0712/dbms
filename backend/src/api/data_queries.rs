@@ -32,7 +32,7 @@ pub struct CreateDataQueryBody {
     #[validate(length(min = 3, max = 500))]
     pub title: String,
     pub database_id: Uuid,
-    #[validate(length(min = 1, max = 200))]
+    #[validate(length(max = 200))]
     pub schema_name: String,
     pub query_mode: String,
     #[validate(length(min = 5, max = 50000))]

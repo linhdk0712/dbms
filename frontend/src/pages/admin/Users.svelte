@@ -18,8 +18,13 @@
   let grantDbId = "";
 
   // Role management
-  let editRoles = { admin: false, maker: false, checker: false };
+  let editRoles = { admin: false, maker: false, checker: false, approver: false };
   let savingRoles = false;
+
+  // Approver unit management
+  let approverUnits = [];
+  let userApproverUnits = [];
+  let assignUnitId = "";
 
   // Activate/Deactivate
   let deactivateTarget = null;
@@ -36,6 +41,12 @@
   onMount(async () => {
     try {
       [users, databases] = await Promise.all([api.users.list(), api.databases.list()]);
+      // Load approver units list
+      try {
+        approverUnits = await api.approverUnits.list();
+      } catch (e) {
+        approverUnits = [];
+      }
     } catch (e) {
       error = e.error || "Không thể tải dữ liệu.";
     } finally {
@@ -54,11 +65,18 @@
       admin: (user.roles || []).includes("ADMIN"),
       maker: (user.roles || []).includes("MAKER"),
       checker: (user.roles || []).includes("CHECKER"),
+      approver: (user.roles || []).includes("APPROVER"),
     };
     try {
       userPermissions = await api.users.getPermissions(user.id);
     } catch (e) {
       userPermissions = [];
+    }
+    // Load user's approver units
+    try {
+      userApproverUnits = await api.users.getApproverUnits(user.id);
+    } catch (e) {
+      userApproverUnits = [];
     }
   }
 
@@ -74,6 +92,7 @@
       if (editRoles.admin) roles.push("ADMIN");
       if (editRoles.maker) roles.push("MAKER");
       if (editRoles.checker) roles.push("CHECKER");
+      if (editRoles.approver) roles.push("APPROVER");
 
       await api.users.update(selectedUser.id, { roles });
 
@@ -311,6 +330,14 @@
                   />
                   <span class="label-text font-medium">CHECKER</span>
                 </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    class="checkbox checkbox-sm checkbox-primary"
+                    bind:checked={editRoles.approver}
+                  />
+                  <span class="label-text font-medium">APPROVER</span>
+                </label>
               </div>
               <button
                 class="btn btn-primary btn-sm mt-4"
@@ -325,41 +352,92 @@
             </div>
           </div>
 
-          <!-- Permissions panel -->
-          <h3 class="text-lg font-semibold mb-3">
-            Quyền Database: {selectedUser.display_name}
-          </h3>
-
-          <!-- Grant form -->
-          <div class="flex gap-2 mb-4">
-            <select class="select select-bordered select-sm flex-1" bind:value={grantDbId}>
-              <option value="" disabled>Chọn database...</option>
-              {#each databases as db}
-                <option value={db.id}>{db.name}</option>
-              {/each}
-            </select>
-            <button class="btn btn-primary btn-sm" on:click={handleGrant} disabled={!grantDbId}>
-              Cấp quyền
-            </button>
+          <!-- Approver Units Management -->
+          <div class="mb-6">
+            <h3 class="text-lg font-semibold mb-3">
+              Approver Units: {selectedUser.display_name}
+            </h3>
+            <div class="bg-base-200 rounded-lg p-4">
+              {#if userApproverUnits.length > 0}
+                <div class="flex flex-wrap gap-2 mb-3">
+                  {#each userApproverUnits as unit}
+                    <span class="badge badge-primary gap-1">
+                      {unit.name}
+                      <button class="btn btn-ghost btn-xs p-0" on:click={async () => {
+                        try {
+                          await api.users.unassignApproverUnit(selectedUser.id, unit.id);
+                          userApproverUnits = userApproverUnits.filter(u => u.id !== unit.id);
+                          toastStore.success(`Đã bỏ gán ${unit.name}`);
+                        } catch (e) {
+                          toastStore.error(e.error || "Lỗi bỏ gán unit.");
+                        }
+                      }}>✕</button>
+                    </span>
+                  {/each}
+                </div>
+              {:else}
+                <p class="text-sm opacity-60 mb-3">Chưa được gán vào unit nào.</p>
+              {/if}
+              <div class="join w-full">
+                <select class="select select-bordered select-sm join-item flex-1" bind:value={assignUnitId}>
+                  <option value="" disabled>Chọn unit...</option>
+                  {#each approverUnits.filter(u => u.is_active && !userApproverUnits.find(au => au.id === u.id)) as unit}
+                    <option value={unit.id}>{unit.name}{unit.description ? ` — ${unit.description}` : ''}</option>
+                  {/each}
+                </select>
+                <button class="btn btn-primary btn-sm join-item" disabled={!assignUnitId} on:click={async () => {
+                  if (!assignUnitId || !selectedUser) return;
+                  try {
+                    await api.users.assignApproverUnit(selectedUser.id, assignUnitId);
+                    assignUnitId = "";
+                    userApproverUnits = await api.users.getApproverUnits(selectedUser.id);
+                    toastStore.success("Đã gán approver unit.");
+                  } catch (e) {
+                    toastStore.error(e.error || "Lỗi gán unit.");
+                  }
+                }}>
+                  Gán
+                </button>
+              </div>
+            </div>
           </div>
 
-          <!-- Current permissions -->
-          {#if userPermissions.length === 0}
-            <p class="text-sm opacity-60">Chưa có quyền nào.</p>
-          {:else}
-            <div class="space-y-2">
-              {#each userPermissions as perm}
-                <div class="flex justify-between items-center bg-base-200 rounded-lg px-3 py-2">
-                  <span class="text-sm">
-                    {databases.find((d) => d.id === perm.database_id)?.name || perm.database_id}
-                  </span>
-                  <button class="btn btn-xs btn-ghost text-error" on:click={() => handleRevoke(perm.database_id)}>
-                    Thu hồi
-                  </button>
+          <!-- Permissions panel -->
+          <div class="mb-6">
+            <h3 class="text-lg font-semibold mb-3">
+              Quyền Database: {selectedUser.display_name}
+            </h3>
+            <div class="bg-base-200 rounded-lg p-4">
+              <div class="join w-full mb-3">
+                <select class="select select-bordered select-sm join-item flex-1" bind:value={grantDbId}>
+                  <option value="" disabled>Chọn database...</option>
+                  {#each databases as db}
+                    <option value={db.id}>{db.name}</option>
+                  {/each}
+                </select>
+                <button class="btn btn-primary btn-sm join-item" on:click={handleGrant} disabled={!grantDbId}>
+                  Cấp quyền
+                </button>
+              </div>
+
+              {#if userPermissions.length === 0}
+                <p class="text-sm opacity-60">Chưa có quyền nào.</p>
+              {:else}
+                <div class="space-y-2">
+                  {#each userPermissions as perm}
+                    <div class="flex justify-between items-center bg-base-100 rounded-lg px-3 py-2">
+                      <span class="text-sm">
+                        {databases.find((d) => d.id === perm.database_id)?.name || perm.database_id}
+                      </span>
+                      <button class="btn btn-xs btn-ghost text-error" on:click={() => handleRevoke(perm.database_id)}>
+                        Thu hồi
+                      </button>
+                    </div>
+                  {/each}
                 </div>
-              {/each}
+              {/if}
             </div>
-          {/if}
+          </div>
         {:else}
           <div class="text-center py-10 opacity-50">Chọn user để xem quyền</div>
         {/if}

@@ -38,7 +38,7 @@ Unit 1 cung cấp nền tảng cho toàn hệ thống SECS: database schema, dom
 | `api/mod.rs` | Router builder + CORS + security headers middleware (SECURITY-04) |
 | `api/health.rs` | `GET /health` — `SELECT 1` kiểm tra DB pool |
 
-### Database Migrations
+### Database Migrations (11 files)
 | File | Bảng |
 |------|------|
 | `001_create_users.sql` | `users`, `user_roles` |
@@ -50,6 +50,8 @@ Unit 1 cung cấp nền tảng cho toàn hệ thống SECS: database schema, dom
 | `007_gap_fixes.sql` | `request_approvals` (new), ALTER `database_connections` + `sql_requests` + `audit_log` |
 | `008_expand_audit_actions.sql` | Expand audit_log action constraint: thêm ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
 | `009_create_change_requests.sql` | `change_requests` (CR metadata cache từ ManageEngine), ALTER `sql_requests` thêm `cr_id` FK |
+| `010_create_data_queries.sql` | `data_query_requests`, `data_query_assigned_users`, `data_query_approval_rules`, `data_query_approval_levels`, `data_query_approval_tracking`, `data_query_executions` — Data Query Permission feature |
+| `011_approver_units.sql` | `approver_units` (admin-defined approval units), `user_approver_units` (user ↔ unit assignment). Bỏ CHECK constraint cứng trên `data_query_approval_levels.approver_unit` — cho phép giá trị linh hoạt tham chiếu từ bảng `approver_units` |
 
 ### Frontend Skeleton
 | File | Mô tả |

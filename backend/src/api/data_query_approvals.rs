@@ -9,7 +9,6 @@ use crate::auth::extractors::RequireAuth;
 use crate::db;
 use crate::error::AppError;
 use crate::models::data_query::DataQueryStatus;
-use crate::models::user::Role;
 use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
@@ -32,54 +31,61 @@ pub struct RejectBody {
 
 /// `GET /api/v1/data-query-approvals/pending` — List pending approvals.
 ///
-/// Trả về data queries có level PENDING matching user's approver_unit.
-/// approver_unit được xác định từ user role/claims.
+/// Trả về data queries có level PENDING matching user's approver_units.
+/// approver_units được lấy từ bảng user_approver_units.
 pub async fn list_pending(
     State(state): State<AppState>,
     RequireAuth(claims): RequireAuth,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    // Determine user's approver_unit from roles
-    let approver_unit = determine_approver_unit(&claims.roles)
-        .ok_or(AppError::Forbidden)?;
-
-    let requests = db::data_query_approvals::list_pending_by_unit(&state.db, &approver_unit)
+    // Get user's approver units from DB
+    let user_units = db::approver_units::get_user_units(&state.db, claims.user_id)
         .await
         .map_err(AppError::Database)?;
 
-    let mut items: Vec<serde_json::Value> = Vec::with_capacity(requests.len());
-    for r in &requests {
-        // Lookup creator name and database name
-        let creator_name = db::users::get_display_name(&state.db, r.created_by)
-            .await
-            .ok();
-        let database_name = db::databases::get_by_id(&state.db, r.database_id)
-            .await
-            .ok()
-            .flatten()
-            .map(|d| d.name);
-
-        items.push(serde_json::json!({
-            "id": r.id,
-            "title": r.title,
-            "database_id": r.database_id,
-            "database_name": database_name,
-            "schema_name": r.schema_name,
-            "sql_query": r.sql_query,
-            "tables_accessed": r.tables_accessed,
-            "query_mode": r.query_mode.to_string(),
-            "ticket_id": r.ticket_id,
-            "status": r.status.to_string(),
-            "created_by": r.created_by,
-            "creator_name": creator_name,
-            "current_approval_level": r.current_approval_level,
-            "total_approval_levels": r.total_approval_levels,
-            "approver_unit": approver_unit,
-            "expires_at": r.expires_at,
-            "created_at": r.created_at,
-        }));
+    if user_units.is_empty() {
+        return Ok(Json(serde_json::json!([])));
     }
 
-    Ok(Json(serde_json::json!(items)))
+    // Query pending requests for ALL units the user belongs to
+    let mut all_items: Vec<serde_json::Value> = Vec::new();
+    for unit in &user_units {
+        let requests = db::data_query_approvals::list_pending_by_unit(&state.db, unit)
+            .await
+            .map_err(AppError::Database)?;
+
+        for r in &requests {
+            let creator_name = db::users::get_display_name(&state.db, r.created_by)
+                .await
+                .ok();
+            let database_name = db::databases::get_by_id(&state.db, r.database_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|d| d.name);
+
+            all_items.push(serde_json::json!({
+                "id": r.id,
+                "title": r.title,
+                "database_id": r.database_id,
+                "database_name": database_name,
+                "schema_name": r.schema_name,
+                "sql_query": r.sql_query,
+                "tables_accessed": r.tables_accessed,
+                "query_mode": r.query_mode.to_string(),
+                "ticket_id": r.ticket_id,
+                "status": r.status.to_string(),
+                "created_by": r.created_by,
+                "creator_name": creator_name,
+                "current_approval_level": r.current_approval_level,
+                "total_approval_levels": r.total_approval_levels,
+                "approver_unit": unit,
+                "expires_at": r.expires_at,
+                "created_at": r.created_at,
+            }));
+        }
+    }
+
+    Ok(Json(serde_json::json!(all_items)))
 }
 
 /// `POST /api/v1/data-queries/:id/approve` — Approve current level.
@@ -102,11 +108,16 @@ pub async fn approve(
         });
     }
 
-    // Verify user has matching approver_unit for current level
-    let approver_unit = determine_approver_unit(&claims.roles)
-        .ok_or(AppError::Forbidden)?;
+    // Get user's approver units from DB
+    let user_units = db::approver_units::get_user_units(&state.db, claims.user_id)
+        .await
+        .map_err(AppError::Database)?;
 
-    // Check tracking: current level must match approver's unit
+    if user_units.is_empty() {
+        return Err(AppError::Forbidden);
+    }
+
+    // Check tracking: current level must match one of user's units
     let tracking = db::data_queries::get_approval_tracking(&state.db, id)
         .await
         .map_err(AppError::Database)?;
@@ -116,7 +127,7 @@ pub async fn approve(
         .find(|t| t.level_order == request.current_approval_level);
 
     match current_tracking {
-        Some(t) if t.approver_unit.to_string() == approver_unit => {}
+        Some(t) if user_units.contains(&t.approver_unit.to_string()) => {}
         _ => return Err(AppError::Forbidden),
     }
 
@@ -195,18 +206,4 @@ pub async fn reject(
     })))
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────
-
-/// Determine approver_unit from user roles.
-/// Maps roles to approval units.
-fn determine_approver_unit(roles: &[Role]) -> Option<String> {
-    // Checker role maps to ITO (team lead approval)
-    if roles.contains(&Role::Checker) {
-        return Some("ITO".to_string());
-    }
-    // Admin can also approve as ITO
-    if roles.contains(&Role::Admin) {
-        return Some("ITO".to_string());
-    }
-    None
-}
+// (determine_approver_unit removed — now uses DB-based user_approver_units)

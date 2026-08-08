@@ -30,6 +30,7 @@ src/
 │   ├── users.rs         # Quản lý users và roles
 │   ├── dashboard.rs     # Dữ liệu tổng hợp
 │   ├── audit.rs         # Audit log endpoints
+│   ├── schema_browser.rs # Browse tables/columns từ target DB
 │   └── health.rs        # Health check
 ├── auth/                # Authentication & Authorization
 │   ├── oidc.rs          # OpenID Connect flow
@@ -152,6 +153,8 @@ docker run -p 3000:3000 --env-file .env secs-backend
 | POST | `/api/approvals/:id/approve` | Approve request |
 | POST | `/api/approvals/:id/reject` | Reject request |
 | GET | `/api/databases` | Danh sách database connections |
+| GET | `/api/v1/databases/:id/tables` | Browse tables từ target DB |
+| GET | `/api/v1/databases/:id/columns` | Browse columns của table từ target DB |
 | GET | `/api/dashboard` | Dashboard data |
 | GET | `/api/audit` | Audit log |
 | GET | `/ws` | WebSocket connection (hiện tại disabled) |

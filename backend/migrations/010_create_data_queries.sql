@@ -61,9 +61,7 @@ CREATE TABLE IF NOT EXISTS data_query_approval_rules (
     created_by              UUID NOT NULL REFERENCES users(id),
     is_active               BOOLEAN NOT NULL DEFAULT TRUE,
     created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(database_id, COALESCE(schema_name, '*'), COALESCE(table_name, '*'))
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE data_query_approval_rules IS 'Approval matrix rules configured by DBA per database/schema/table';
@@ -132,6 +130,10 @@ CREATE INDEX idx_dqr_expires ON data_query_requests(expires_at)
 
 CREATE INDEX idx_dqau_user ON data_query_assigned_users(user_id);
 CREATE INDEX idx_dqau_request ON data_query_assigned_users(query_request_id);
+
+CREATE UNIQUE INDEX idx_dqar_unique_rule ON data_query_approval_rules(
+    database_id, COALESCE(schema_name, '*'), COALESCE(table_name, '*')
+) WHERE is_active = TRUE;
 
 CREATE INDEX idx_dqar_lookup ON data_query_approval_rules(database_id, schema_name, table_name)
     WHERE is_active = TRUE;

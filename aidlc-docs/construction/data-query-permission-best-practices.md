@@ -548,9 +548,7 @@ CREATE TABLE IF NOT EXISTS data_query_approval_rules (
     created_by      UUID NOT NULL REFERENCES users(id),
     is_active       BOOLEAN NOT NULL DEFAULT TRUE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    UNIQUE(database_id, COALESCE(schema_name,'*'), COALESCE(table_name,'*'))
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Các level trong approval chain
@@ -700,10 +698,10 @@ where
 | POST | `/api/data-queries/:id/approve` | Approve current level | Approver (matching unit) |
 | POST | `/api/data-queries/:id/reject` | Reject | Approver (matching unit) |
 | **Approval Matrix (DBA)** | | | |
-| GET | `/api/data-query-rules` | List approval rules | Admin/DBA |
-| POST | `/api/data-query-rules` | Create rule | Admin/DBA |
-| PUT | `/api/data-query-rules/:id` | Update rule | Admin/DBA |
-| DELETE | `/api/data-query-rules/:id` | Delete rule | Admin/DBA |
+| GET | `/api/data-query-rules` | List approval rules | Approver |
+| POST | `/api/data-query-rules` | Create rule | Approver |
+| PUT | `/api/data-query-rules/:id` | Update rule | Approver |
+| DELETE | `/api/data-query-rules/:id` | Delete rule | Approver |
 | **Audit** | | | |
 | GET | `/api/data-query-executions` | Execution audit log | Admin/DBA |
 | GET | `/api/data-queries/:id/executions` | Executions of a query | Creator/Assigned/Admin |

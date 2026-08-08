@@ -55,6 +55,7 @@
 - **Migration**: `010_create_data_queries.sql` ✅
 - **Design Doc**: `aidlc-docs/construction/data-query-permission-best-practices.md` ✅
 - **Tables Created**: data_query_requests, data_query_assigned_users, data_query_approval_rules, data_query_approval_levels, data_query_approval_tracking, data_query_executions
+- **Migration 011**: `approver_units` (admin-defined), `user_approver_units` (user↔unit). Bỏ CHECK constraint cứng trên `data_query_approval_levels.approver_unit` → giá trị linh hoạt tham chiếu từ bảng `approver_units`
 - **Backend API Handlers**: ✅
   - `api/data_queries.rs` — create, list, get_detail, update, submit, execute, list_executions
   - `api/data_query_approvals.rs` — list_pending, approve, reject

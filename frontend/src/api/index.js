@@ -28,6 +28,7 @@ import {
   DATA_QUERY_APPROVALS,
   DATA_QUERY_RULES,
   DATA_QUERY_EXECUTIONS,
+  APPROVER_UNITS,
 } from "./endpoints.js";
 
 // ─── Base Config ───────────────────────────────────────────────────────────────
@@ -240,6 +241,22 @@ const databases = {
   async testNew(payload) {
     return apiFetch(DATABASES.TEST_NEW, { method: "POST", body: payload });
   },
+
+  /** Liệt kê tables trong database đích (cần permission) */
+  async listTables(id, schema) {
+    const params = new URLSearchParams();
+    if (schema) params.set("schema", schema);
+    const qs = params.toString();
+    return apiFetch(`${DATABASES.TABLES(id)}${qs ? "?" + qs : ""}`);
+  },
+
+  /** Liệt kê columns của table trong database đích (cần permission) */
+  async listColumns(id, table, schema) {
+    const params = new URLSearchParams();
+    params.set("table", table);
+    if (schema) params.set("schema", schema);
+    return apiFetch(`${DATABASES.COLUMNS(id)}?${params}`);
+  },
 };
 
 // ─── Users ─────────────────────────────────────────────────────────────────────
@@ -271,6 +288,26 @@ const users = {
   /** Thu hồi quyền (Admin only) */
   async revokePermission(userId, databaseId) {
     return apiFetch(USERS.REVOKE_PERMISSION(userId, databaseId), {
+      method: "DELETE",
+    });
+  },
+
+  /** Lấy danh sách approver units của user */
+  async getApproverUnits(userId) {
+    return apiFetch(USERS.APPROVER_UNITS(userId));
+  },
+
+  /** Gán approver unit cho user (Admin only) */
+  async assignApproverUnit(userId, unitId) {
+    return apiFetch(USERS.APPROVER_UNITS(userId), {
+      method: "POST",
+      body: { unit_id: unitId },
+    });
+  },
+
+  /** Bỏ gán approver unit cho user (Admin only) */
+  async unassignApproverUnit(userId, unitId) {
+    return apiFetch(USERS.UNASSIGN_UNIT(userId, unitId), {
       method: "DELETE",
     });
   },
@@ -424,6 +461,33 @@ const dataQueryExecutions = {
   },
 };
 
+// ─── Approver Units ────────────────────────────────────────────────────────────
+
+const approverUnits = {
+  /** Danh sách tất cả approver units */
+  async list() {
+    return apiFetch(APPROVER_UNITS.LIST);
+  },
+
+  /** Tạo approver unit mới (Admin only) */
+  async create(name, description) {
+    return apiFetch(APPROVER_UNITS.CREATE, {
+      method: "POST",
+      body: { name, description },
+    });
+  },
+
+  /** Cập nhật approver unit (Admin only) */
+  async update(id, payload) {
+    return apiFetch(APPROVER_UNITS.UPDATE(id), { method: "PUT", body: payload });
+  },
+
+  /** Xóa approver unit (Admin only) */
+  async delete(id) {
+    return apiFetch(APPROVER_UNITS.DELETE(id), { method: "DELETE" });
+  },
+};
+
 // ─── Export tập trung ──────────────────────────────────────────────────────────
 
 export const api = {
@@ -438,6 +502,7 @@ export const api = {
   dataQueryApprovals,
   dataQueryRules,
   dataQueryExecutions,
+  approverUnits,
 };
 
 export default api;

@@ -103,6 +103,7 @@ Protected (Bearer token required):
 | `RequireAdmin(claims)` | Token + role ADMIN |
 | `RequireMaker(claims)` | Token + role MAKER |
 | `RequireChecker(claims)` | Token + role CHECKER |
+| `RequireApprover(claims)` | Token + role APPROVER (hoặc ADMIN) — quản lý Approval Matrix và Approver Units |
 
 ---
 

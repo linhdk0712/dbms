@@ -48,8 +48,9 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | `pages/data-queries/MyDataQueries.svelte` | `/data-queries` | Maker | List Data Queries của user |
 | `pages/data-queries/DataQueryDetail.svelte` | `/data-queries/:id` | Maker | Chi tiết Data Query, trạng thái phê duyệt |
 | `pages/admin/Databases.svelte` | `/admin/databases` | Admin | CRUD databases, test connection |
-| `pages/admin/Users.svelte` | `/admin/users` | Admin | Manage users + grant/revoke permissions |
+| `pages/admin/Users.svelte` | `/admin/users` | Admin | Manage users + grant/revoke permissions + assign/unassign approver units |
 | `pages/admin/ApprovalMatrix.svelte` | `/admin/approval-matrix` | Admin | Cấu hình approval rules (multi-level) theo database/schema/table |
+| `pages/admin/ApproverUnits.svelte` | `/admin/approver-units` | Admin | CRUD Approver Units — tạo/sửa/xóa/toggle active đơn vị phê duyệt |
 
 ### Root
 | File | Thay đổi |
@@ -118,6 +119,7 @@ Hash-based routing (svelte-spa-router)
 #/admin/databases    → Databases.svelte (Admin)
 #/admin/users        → Users.svelte (Admin)
 #/admin/approval-matrix → ApprovalMatrix.svelte (Admin)
+#/admin/approver-units → ApproverUnits.svelte (Admin)
 ```
 
 ---
@@ -132,13 +134,14 @@ File `api/endpoints.js` định nghĩa tập trung tất cả endpoint paths:
 | `REQUESTS` | Maker CRUD, submit, cancel, clone, audit, analyze |
 | `APPROVALS` | Checker pending list, validate, approve, reject |
 | `DATABASES` | Admin CRUD, test connection, my-permissions |
-| `USERS` | Admin user management, permissions grant/revoke |
+| `USERS` | Admin user management, permissions grant/revoke, approver-units assign/unassign |
 | `DASHBOARD` | Role-aware statistics |
 | `CHANGE_REQUESTS` | CR list, create, detail, sync, delete (ManageEngine integration) |
 | `DATA_QUERIES` | Data Query Permission — list, create, get, update, submit, execute, executions |
 | `DATA_QUERY_APPROVALS` | Multi-level approval — pending list, approve, reject (ITO/ITS/Compliance) |
-| `DATA_QUERY_RULES` | Approval Matrix management — CRUD rules (Admin/DBA) |
+| `DATA_QUERY_RULES` | Approval Matrix management — CRUD rules (Approver) |
 | `DATA_QUERY_EXECUTIONS` | Execution audit log (Admin/DBA) |
+| `APPROVER_UNITS` | Approver Units management — list, create, update, delete (Admin) |
 
 ---
 
