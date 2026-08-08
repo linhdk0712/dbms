@@ -78,6 +78,7 @@ SqlRequest {
     executed_at: Option<DateTime<Utc>>
     rows_affected: Option<i64>
     execution_error: Option<String>
+    validation_result: Option<serde_json::Value> (JSONB — kết quả validate SQL via EXPLAIN)
     created_at: DateTime<Utc>
     updated_at: DateTime<Utc>
     submitted_at: Option<DateTime<Utc>>
@@ -103,6 +104,7 @@ CHECK (approved_by IS NULL OR approved_by != created_by)
 **Notes**:
 - `sql_content` không trả về trong list API (chỉ trong detail)
 - State transitions được enforce cả ở application layer (can_transition_to) và DB constraint
+- `validation_result` lưu kết quả EXPLAIN-based validation dưới dạng JSONB `{valid, execution_plan, warnings, error, validated_at}` — persist để hiển thị lại khi reload trang mà không cần re-validate
 
 ---
 

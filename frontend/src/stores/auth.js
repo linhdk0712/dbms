@@ -2,37 +2,67 @@ import { writable } from "svelte/store";
 
 /**
  * Auth store — quản lý trạng thái đăng nhập.
- * Lưu JWT token và thông tin user.
+ *
+ * JWT token được lưu trong httpOnly cookie (server-managed) — không accessible từ JS.
+ * Store chỉ lưu user info để hiển thị UI (roles, display_name, email).
+ *
+ * SECURITY: Token KHÔNG được lưu trong localStorage nữa → chống XSS token theft.
+ * Backward compat: nếu có token cũ trong localStorage (từ phiên trước), vẫn đọc được
+ * để gửi qua Bearer header cho đến khi hết hạn.
  */
 function createAuthStore() {
-  // Khôi phục từ localStorage (nếu có)
-  const stored = typeof localStorage !== "undefined"
+  // Khôi phục user info từ sessionStorage (không lưu token)
+  const stored = typeof sessionStorage !== "undefined"
+    ? JSON.parse(sessionStorage.getItem("secs_user") || "null")
+    : null;
+
+  // Backward compat: nếu có auth cũ trong localStorage (legacy), migrate
+  const legacy = typeof localStorage !== "undefined"
     ? JSON.parse(localStorage.getItem("secs_auth") || "null")
     : null;
 
-  const { subscribe, set, update } = writable(stored);
+  const initial = stored || (legacy ? { user: legacy.user, token: legacy.token } : null);
+
+  const { subscribe, set, update } = writable(initial);
 
   return {
     subscribe,
 
-    /** Đăng nhập — lưu token + user info */
+    /**
+     * Đăng nhập — lưu user info (token nằm trong httpOnly cookie).
+     * Nếu có token (backward compat từ legacy), vẫn lưu tạm.
+     */
     login(data) {
-      const auth = { token: data.token, user: data.user };
-      localStorage.setItem("secs_auth", JSON.stringify(auth));
+      const auth = { user: data.user, token: data.token || null };
+      // Chỉ lưu user info vào sessionStorage (tồn tại trong tab hiện tại)
+      sessionStorage.setItem("secs_user", JSON.stringify(auth));
+      // Xóa legacy localStorage
+      localStorage.removeItem("secs_auth");
       set(auth);
     },
 
-    /** Đăng xuất — xóa token */
+    /**
+     * Đăng nhập chỉ với user info (khi dùng cookie auth — không có token trả về).
+     */
+    setUser(user) {
+      const auth = { user, token: null };
+      sessionStorage.setItem("secs_user", JSON.stringify(auth));
+      localStorage.removeItem("secs_auth");
+      set(auth);
+    },
+
+    /** Đăng xuất — xóa state (cookie sẽ bị clear bởi server response) */
     logout() {
+      sessionStorage.removeItem("secs_user");
       localStorage.removeItem("secs_auth");
       set(null);
     },
 
-    /** Kiểm tra đã đăng nhập chưa */
+    /** Kiểm tra đã đăng nhập chưa (có user info trong store) */
     get isAuthenticated() {
       let val;
       subscribe((v) => (val = v))();
-      return val?.token != null;
+      return val?.user != null;
     },
   };
 }

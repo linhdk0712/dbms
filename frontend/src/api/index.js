@@ -38,7 +38,8 @@ const BASE_URL = "/api/v1";
 // ─── Core Fetch Wrapper ────────────────────────────────────────────────────────
 
 /**
- * Wrapper fetch tập trung. Tự thêm Authorization header, parse JSON, handle errors.
+ * Wrapper fetch tập trung. Cookie httpOnly tự đính kèm, parse JSON, handle errors.
+ * Nếu có token trong store (legacy/API clients) thì vẫn gửi Authorization header.
  * @param {string} endpoint - Path (lấy từ endpoints.js)
  * @param {object} options - fetch options (method, body, headers)
  * @param {boolean} useBaseUrl - Có prepend /api/v1 không (default: true)
@@ -57,6 +58,7 @@ async function apiFetch(endpoint, options = {}, useBaseUrl = true) {
   const config = {
     ...options,
     headers,
+    credentials: "include", // Gửi httpOnly cookie cross-origin
   };
 
   if (options.body && typeof options.body === "object") {
@@ -206,6 +208,11 @@ const approvals = {
       method: "POST",
       body: { rejection_reason },
     });
+  },
+
+  /** Retry execution cho request FAILED (Checker only) */
+  async retry(id) {
+    return apiFetch(APPROVALS.RETRY(id), { method: "POST" });
   },
 };
 

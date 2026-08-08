@@ -67,6 +67,49 @@ pub struct DbCredentials {
     pub password: String,
 }
 
+/// Validate identifier (schema name, table name) to prevent SQL injection.
+///
+/// Rules:
+/// - Only allow alphanumeric, underscore, dollar sign, dot, hash
+/// - Must start with letter or underscore
+/// - Max 128 characters
+/// - Must not be empty
+///
+/// # Returns
+/// - `Ok(())` if valid
+/// - `Err(ExecutorError)` if contains invalid characters
+#[allow(dead_code)]
+pub fn validate_identifier(name: &str) -> Result<(), ExecutorError> {
+    if name.is_empty() {
+        return Err(ExecutorError::QueryFailed(
+            "identifier must not be empty".to_string(),
+        ));
+    }
+    if name.len() > 128 {
+        return Err(ExecutorError::QueryFailed(
+            "identifier must not exceed 128 characters".to_string(),
+        ));
+    }
+    // Must start with letter or underscore
+    let first = name.chars().next().unwrap();
+    if !first.is_ascii_alphabetic() && first != '_' {
+        return Err(ExecutorError::QueryFailed(format!(
+            "identifier must start with a letter or underscore, got: '{}'",
+            first
+        )));
+    }
+    // Remaining chars: alphanumeric, underscore, dollar, hash, dot
+    for ch in name.chars() {
+        if !ch.is_ascii_alphanumeric() && ch != '_' && ch != '$' && ch != '#' && ch != '.' {
+            return Err(ExecutorError::QueryFailed(format!(
+                "identifier contains invalid character: '{}'",
+                ch
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Trait chung cho tất cả database executors.
 /// Mỗi loại DB (PostgreSQL, MySQL, Oracle, MongoDB) implement trait này.
 ///
@@ -566,7 +609,16 @@ fn validate_sql_oracle_blocking(
     };
 
     if let Some(schema_name) = schema {
-        if let Err(e) = conn.execute(&format!("ALTER SESSION SET CURRENT_SCHEMA = {schema_name}"), &[]) {
+        // Validate schema name to prevent SQL injection
+        if let Err(e) = validate_identifier(schema_name) {
+            return ValidationResult {
+                valid: false,
+                execution_plan: vec![],
+                warnings: vec![],
+                error: Some(format!("Invalid schema name: {e}")),
+            };
+        }
+        if let Err(e) = conn.execute(&format!("ALTER SESSION SET CURRENT_SCHEMA = \"{}\"", schema_name), &[]) {
             return ValidationResult {
                 valid: false,
                 execution_plan: vec![],

@@ -25,6 +25,11 @@ pub struct Config {
     pub log_dir: String,
     /// Tắt TLS khi kết nối đến target database (chỉ dùng cho development/testing)
     pub disable_target_db_tls: bool,
+    /// Danh sách CIDR/IP của trusted reverse proxies.
+    /// Chỉ trust X-Forwarded-For khi request đến từ proxy trong list này.
+    /// Format: comma-separated (ví dụ: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16")
+    /// Nếu rỗng → không trust X-Forwarded-For (dùng ConnectInfo).
+    pub trusted_proxies: Vec<String>,
     /// ManageEngine ServiceDesk Plus integration
     pub manageengine: ManageEngineConfig,
 }
@@ -91,6 +96,12 @@ impl Config {
                 .unwrap_or_else(|_| "false".to_string())
                 .parse::<bool>()
                 .unwrap_or(false),
+            trusted_proxies: std::env::var("TRUSTED_PROXIES")
+                .unwrap_or_default()
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
             manageengine: ManageEngineConfig {
                 enabled: std::env::var("MANAGEENGINE_ENABLED")
                     .unwrap_or_else(|_| "false".to_string())

@@ -96,8 +96,10 @@ fn execute_blocking(
 
     // Set schema nếu cần (ALTER SESSION SET CURRENT_SCHEMA)
     if let Some(schema_name) = schema {
+        // Validate schema name to prevent SQL injection
+        super::validate_identifier(schema_name)?;
         conn.execute(
-            &format!("ALTER SESSION SET CURRENT_SCHEMA = {schema_name}"),
+            &format!("ALTER SESSION SET CURRENT_SCHEMA = \"{}\"", schema_name),
             &[],
         )
         .map_err(|e| ExecutorError::QueryFailed(format!("failed to set schema: {e}")))?;

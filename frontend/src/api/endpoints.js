@@ -61,6 +61,7 @@ export const REQUESTS = {
  * @property {function(string): string} VALIDATE - Validate SQL before approval
  * @property {function(string): string} APPROVE - Approve a request
  * @property {function(string): string} REJECT - Reject a request
+ * @property {function(string): string} RETRY - Retry execution of a previously failed request
  */
 export const APPROVALS = {
   PENDING: "/approvals/pending",
@@ -68,6 +69,7 @@ export const APPROVALS = {
   VALIDATE: (id) => `/approvals/${id}/validate`,
   APPROVE: (id) => `/approvals/${id}/approve`,
   REJECT: (id) => `/approvals/${id}/reject`,
+  RETRY: (id) => `/approvals/${id}/retry`,
 };
 
 // ─── Databases (Admin) ─────────────────────────────────────────────────────────

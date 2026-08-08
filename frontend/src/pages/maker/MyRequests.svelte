@@ -12,6 +12,9 @@
   let statusFilter = "";
   let pagination = { page: 1, per_page: 20, total: 0, total_pages: 0 };
 
+  /** Map database_id → database info cho hiển thị tên */
+  let databaseMap = {};
+
   // Confirm modal state
   let confirmOpen = false;
   let confirmAction = null;
@@ -20,7 +23,35 @@
   let confirmVariant = "primary";
   let confirmLoading = false;
 
-  onMount(() => loadRequests());
+  onMount(async () => {
+    await loadDatabases();
+    loadRequests();
+  });
+
+  /** Tải danh sách databases để map database_id → name/type. */
+  async function loadDatabases() {
+    try {
+      const dbs = await api.databases.myPermissions();
+      databaseMap = {};
+      for (const db of dbs) {
+        databaseMap[db.id] = db;
+      }
+    } catch (e) {
+      // Không block — danh sách vẫn hiển thị, chỉ thiếu tên DB
+    }
+  }
+
+  /** Lấy tên hiển thị database từ map. */
+  function getDatabaseName(dbId) {
+    const db = databaseMap[dbId];
+    return db ? db.name : "";
+  }
+
+  /** Lấy loại database (db_type) từ map. */
+  function getDatabaseType(dbId) {
+    const db = databaseMap[dbId];
+    return db ? db.db_type : "";
+  }
 
   /**
    * Tải danh sách requests của user hiện tại từ API.
@@ -187,6 +218,7 @@
         <thead>
           <tr>
             <th>Mô tả</th>
+            <th>Database</th>
             <th>Trạng thái</th>
             <th>Ngày tạo</th>
             <th>Hành động</th>
@@ -197,6 +229,16 @@
             <tr class="hover">
               <td>
                 <a href="#/requests/{req.id}" class="link link-hover font-medium">{req.description}</a>
+              </td>
+              <td>
+                {#if getDatabaseName(req.database_id)}
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs opacity-60">{getDatabaseType(req.database_id)}</span>
+                    <span class="text-sm">{getDatabaseName(req.database_id)}</span>
+                  </div>
+                {:else}
+                  <span class="text-xs opacity-40">—</span>
+                {/if}
               </td>
               <td><StatusBadge status={req.status} /></td>
               <td class="text-sm text-base-content/60">{new Date(req.created_at).toLocaleDateString("vi")}</td>

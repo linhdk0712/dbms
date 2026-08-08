@@ -3,6 +3,7 @@ use axum::{
     http::HeaderMap,
     Json,
 };
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -68,6 +69,8 @@ pub struct ApprovalDetailResponse {
     pub approval_count: i64,
     /// DDL analysis — cảnh báo nếu SQL chứa DDL statements (BR-005)
     pub sql_analysis: SqlAnalysis,
+    /// Kết quả validate SQL đã lưu (nếu có) — hiển thị lại khi reload trang
+    pub validation_result: Option<serde_json::Value>,
 }
 
 // ── Handlers ───────────────────────────────────────────────────────────
@@ -155,6 +158,7 @@ pub async fn get_detail(
         approval_levels_required: request.approval_levels_required,
         approval_count,
         sql_analysis: sql_analyzer::analyze_sql(&request.sql_content),
+        validation_result: request.validation_result,
     }))
 }
 
@@ -388,6 +392,98 @@ pub async fn reject(
 
 // ── Synchronous SQL Execution (returns result to caller) ───────────────
 
+/// `POST /api/v1/approvals/:id/retry` — Re-execute request đã FAILED.
+///
+/// Cho phép Checker hoặc Admin retry execution khi request bị lỗi do
+/// connection timeout, network issue, hoặc lỗi tạm thời khác.
+/// Request phải đang ở trạng thái FAILED.
+///
+/// Flow:
+/// 1. Validate status = FAILED
+/// 2. Reset status → APPROVED (xóa execution_error cũ)
+/// 3. Ghi audit log RETRY
+/// 4. Re-execute SQL
+/// 5. Trả kết quả (EXECUTED hoặc FAILED lại)
+pub async fn retry(
+    State(state): State<AppState>,
+    RequireChecker(claims): RequireChecker,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Path(id): Path<Uuid>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let request = db::requests::get_by_id(&state.db, id)
+        .await
+        .map_err(AppError::Database)?
+        .ok_or(AppError::NotFound)?;
+
+    // Chỉ retry request đang FAILED
+    if request.status != RequestStatus::Failed {
+        return Err(AppError::InvalidStateTransition {
+            from: request.status.to_string(),
+            to: "RETRY".to_string(),
+        });
+    }
+
+    // Extract client IP for audit trail
+    let ip = extract_client_ip(&headers, &ConnectInfo(addr));
+
+    // Reset status → APPROVED
+    db::requests::reset_to_approved(&state.db, id)
+        .await
+        .map_err(AppError::Database)?;
+
+    // Audit log: RETRY
+    let _ = db::audit::insert(
+        &state.db,
+        id,
+        "RETRY",
+        claims.user_id,
+        Some("Re-executing after failure"),
+        None,
+        Some(&ip),
+    )
+    .await;
+
+    // Re-execute SQL
+    let execution_result = execute_sql_sync(
+        &state.db,
+        &state.config,
+        &state.notification_tx,
+        id,
+        request.database_id,
+        &request.sql_content,
+        claims.user_id,
+        request.created_by,
+        Some(ip.clone()),
+    )
+    .await;
+
+    match execution_result {
+        Ok(result) => {
+            Ok(Json(serde_json::json!({
+                "id": id,
+                "status": "EXECUTED",
+                "message": "Retry successful — SQL executed.",
+                "execution_result": {
+                    "success": true,
+                    "rows_affected": result.rows_affected
+                }
+            })))
+        }
+        Err(error_msg) => {
+            Ok(Json(serde_json::json!({
+                "id": id,
+                "status": "FAILED",
+                "message": "Retry failed — execution error persists.",
+                "execution_result": {
+                    "success": false,
+                    "error": error_msg
+                }
+            })))
+        }
+    }
+}
+
 /// `POST /api/v1/approvals/:id/validate` — Validate SQL trước khi approve.
 ///
 /// Chạy EXPLAIN trên database đích để kiểm tra:
@@ -446,12 +542,18 @@ pub async fn validate(
     )
     .await;
 
-    Ok(Json(serde_json::json!({
+    // Lưu kết quả validate vào DB để hiển thị khi reload trang
+    let validation_json = serde_json::json!({
         "valid": result.valid,
         "execution_plan": result.execution_plan,
         "warnings": result.warnings,
-        "error": result.error
-    })))
+        "error": result.error,
+        "validated_at": Utc::now().to_rfc3339()
+    });
+
+    let _ = db::requests::save_validation_result(&state.db, id, &validation_json).await;
+
+    Ok(Json(validation_json))
 }
 
 /// Thực thi SQL đồng bộ sau khi request được approve đủ levels.

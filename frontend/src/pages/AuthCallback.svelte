@@ -1,4 +1,12 @@
 <script>
+  /**
+   * @component AuthCallback
+   * @description Handles the OIDC authentication callback after SSO redirect.
+   * Supports two flows:
+   * - Cookie-based auth (primary): server sets httpOnly cookie, this page calls /auth/me to get user info.
+   * - Legacy token flow (backward compat): reads token from URL fragment and stores it.
+   * On success, redirects to dashboard. On failure, shows error with retry link.
+   */
   import { onMount } from "svelte";
   import { push } from "svelte-spa-router";
   import { authStore } from "../stores/auth.js";
@@ -7,22 +15,29 @@
   let error = null;
 
   onMount(async () => {
-    // Token được truyền qua URL fragment: /#/auth/callback?token=xxx
+    // Cookie-based auth: token đã được set bởi server qua httpOnly cookie.
+    // Chỉ cần gọi /auth/me để lấy user info.
+    //
+    // Backward compat: nếu có token trong URL (legacy flow), vẫn xử lý.
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const token = params.get("token");
 
-    if (!token) {
-      error = "Không nhận được token từ server.";
-      return;
-    }
-
     try {
-      // Lưu token tạm để gọi /auth/me
-      authStore.login({ token, user: null });
+      if (token) {
+        // Legacy flow: token trong URL → lưu vào store cho backward compat
+        authStore.login({ token, user: null });
+      }
 
-      // Lấy thông tin user
+      // Gọi /auth/me — cookie httpOnly tự đính kèm, hoặc Bearer header (legacy)
       const user = await api.auth.me();
-      authStore.login({ token, user });
+
+      if (token) {
+        // Legacy: lưu cả token + user
+        authStore.login({ token, user });
+      } else {
+        // Cookie flow: chỉ lưu user info (token nằm trong cookie)
+        authStore.setUser(user);
+      }
 
       // Redirect về dashboard
       push("/");

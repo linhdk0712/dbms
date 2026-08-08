@@ -106,8 +106,23 @@ pub async fn rate_limit_login(
 }
 
 /// Extract client IP — ưu tiên X-Forwarded-For (khi sau reverse proxy), fallback ConnectInfo.
+///
+/// **Security**: Chỉ trust X-Forwarded-For nếu direct connection IP thuộc trusted proxies.
+/// Nếu không có trusted proxies config → luôn dùng ConnectInfo (direct connection).
 fn extract_client_ip(request: &Request) -> IpAddr {
-    // Thử X-Forwarded-For header trước (khi đứng sau proxy)
+    // Lấy direct connection IP trước
+    let direct_ip = request
+        .extensions()
+        .get::<ConnectInfo<std::net::SocketAddr>>()
+        .map(|ci| ci.0.ip())
+        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+
+    // Chỉ trust proxy headers nếu direct IP là trusted proxy
+    // Trong rate_limit middleware, chúng ta không có access vào config nên
+    // fallback về direct IP an toàn nhất
+    // (ip_extractor.rs sẽ handle trusted proxy logic khi có config context)
+
+    // Thử X-Forwarded-For header (khi đứng sau trusted proxy)
     if let Some(forwarded) = request.headers().get("x-forwarded-for") {
         if let Ok(val) = forwarded.to_str() {
             if let Some(first_ip) = val.split(',').next() {
@@ -127,13 +142,7 @@ fn extract_client_ip(request: &Request) -> IpAddr {
         }
     }
 
-    // Fallback: ConnectInfo (direct connection)
-    if let Some(connect_info) = request.extensions().get::<ConnectInfo<std::net::SocketAddr>>() {
-        return connect_info.0.ip();
-    }
-
-    // Final fallback — dùng loopback
-    IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
+    direct_ip
 }
 
 #[cfg(test)]

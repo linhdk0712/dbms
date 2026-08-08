@@ -18,7 +18,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 | File | Mô tả |
 |------|-------|
 | `db/mod.rs` | Export tất cả sub-modules |
-| `db/requests.rs` | CRUD cho sql_requests: create, get, list, submit, approve, reject, cancel, mark_executed/failed. `list_pending(pool, checker_user_id)` excludes checker's own requests (4-eyes, Req 13.1/13.2) |
+| `db/requests.rs` | CRUD cho sql_requests: create, get, list, submit, approve, reject, cancel, mark_executed/failed, `save_validation_result()` (persist JSONB validation result để reload không cần validate lại). `list_pending(pool, checker_user_id)` excludes checker's own requests (4-eyes, Req 13.1/13.2) |
 | `db/audit.rs` | Insert audit log (append-only), fetch by request_id/actor_id. `insert_admin_action()` cho admin actions không gắn request (request_id = NULL). Actions: CREATED, SUBMITTED, APPROVED, REJECTED, EXECUTED, FAILED, CANCELLED, EXECUTING, ROLE_CHANGED, USER_STATUS_CHANGED, CREDENTIAL_ROTATED |
 | `db/databases.rs` | CRUD cho database_connections: create, get, list, update, update_credentials |
 | `db/permissions.rs` | check_permission, grant, revoke, list_user_permissions, list_database_users |
@@ -37,7 +37,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 ### Backend — Executor
 | File | Mô tả |
 |------|-------|
-| `executor/mod.rs` | `DatabaseExecutor` trait, `ExecutionResult`, `ValidationResult`, `ExecutorError`, `DbCredentials`, `execute_sql()`, `test_db_connection()`, `validate_sql()` (EXPLAIN-based validation cho PostgreSQL/MySQL/Oracle/MongoDB) |
+| `executor/mod.rs` | `DatabaseExecutor` trait, `ExecutionResult`, `ValidationResult`, `ExecutorError`, `DbCredentials`, `execute_sql()`, `test_db_connection()`, `validate_sql()` (EXPLAIN-based validation cho PostgreSQL/MySQL/Oracle/MongoDB). Kết quả validation được persist vào `sql_requests.validation_result` (JSONB) — migration 013. |
 | `executor/postgres.rs` | PostgreSQL executor: connect, execute multi-statement in transaction, test_connection |
 | `executor/mysql.rs` | MySQL executor: connect, execute multi-statement in transaction, test_connection |
 | `executor/oracle.rs` | Oracle executor: TCPS connection, spawn_blocking, test_connection |
@@ -50,7 +50,7 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 |------|-------|
 | `api/requests.rs` | Maker: POST create (inline CR resolution — parse `cr_url`, lookup/create CR, pass `cr_id`), GET list, GET detail, POST submit, POST cancel |
 | `api/analysis.rs` | AI SQL Analysis: POST analyze — LLM-powered phân tích SQL (security issues, recommendations, cost estimation). Access: Maker (own requests) + Checker (PENDING requests) |
-| `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ **synchronous** SQL exec — result returned in response), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking. Approve response includes `execution_result` with `success`/`rows_affected` or `error`. |
+| `api/approvals.rs` | Checker: GET pending, GET detail, POST approve (+ **synchronous** SQL exec — result returned in response), POST reject. Response includes `database_name`, `approval_levels_required`, `approval_count` for multi-level approval progress tracking, and `validation_result` (persisted EXPLAIN-based validation, if available). Approve response includes `execution_result` with `success`/`rows_affected` or `error`. |
 | `api/change_requests.rs` | CR Integration: POST create (parse URL + fetch ManageEngine metadata), GET list (paginated), GET detail, POST sync (re-fetch metadata), DELETE (Admin only). Includes `check_maintenance_window()` helper for enforce time window trước khi execute SQL. |
 | `api/databases.rs` | Admin: POST create, GET list, GET detail, PATCH update, POST test-new-connection (raw params), POST test-connection (saved DB) |
 | `api/users.rs` | Admin: GET list, GET detail, PATCH update (active status + roles), GET/POST/DELETE permissions |
@@ -63,11 +63,16 @@ Unit 3 triển khai toàn bộ business logic: DB access layer, SQL executor (Po
 |------|-------|
 | `ws/mod.rs` | WebSocket upgrade, JWT auth from query param, broadcast → client forwarding |
 
+### Backend — Rate Limiting
+| File | Mô tả |
+|------|-------|
+| `auth/global_rate_limit.rs` | `GlobalRateLimiter` — sliding window counter per user_id (200 req/min/user). Áp dụng cho tất cả protected routes sau auth middleware. In-memory `HashMap<Uuid, Vec<Instant>>`, auto-cleanup khi >5000 entries. |
+
 ### Backend — Updated
 | File | Thay đổi |
 |------|----------|
 | `main.rs` | Thêm `mod executor`, `mod ws` |
-| `api/mod.rs` | Wire tất cả routes (public + protected), includes approver_units module |
+| `api/mod.rs` | Wire tất cả routes (public + protected), includes approver_units module. Global rate limiter applied via `Extension(GlobalRateLimiter)` + `from_fn(global_rate_limit)` trên protected routes |
 | `Cargo.toml` | Thêm `urlencoding` |
 
 ---

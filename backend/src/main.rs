@@ -100,6 +100,14 @@ async fn main() -> Result<()> {
         );
     }
 
+    // 8.6. Spawn token blacklist cleanup background task
+    {
+        let blacklist = state.token_blacklist.clone();
+        let interval = std::time::Duration::from_secs(300); // cleanup every 5 minutes
+        tokio::spawn(crate::auth::token_blacklist::blacklist_cleanup_task(blacklist, interval));
+        tracing::info!("Token blacklist cleanup task started (interval: 300s)");
+    }
+
     // 9. Build router với middleware
     let app = api::build_router(state);
 

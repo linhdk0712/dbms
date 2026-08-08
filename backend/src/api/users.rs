@@ -16,12 +16,14 @@ use crate::state::AppState;
 
 // ── DTOs ───────────────────────────────────────────────────────────────
 
+/// Request body cho `PATCH /api/v1/users/:id` — cập nhật trạng thái hoặc roles của user.
 #[derive(Debug, Deserialize)]
 pub struct UpdateUserBody {
     pub is_active: Option<bool>,
     pub roles: Option<Vec<String>>,
 }
 
+/// Response DTO chứa thông tin chi tiết của một user, bao gồm roles.
 #[derive(Debug, Serialize)]
 pub struct UserDetailResponse {
     pub id: Uuid,
@@ -32,6 +34,7 @@ pub struct UserDetailResponse {
     pub created_at: String,
 }
 
+/// Request body cho `POST /api/v1/users/:user_id/permissions` — cấp quyền trên database.
 #[derive(Debug, Deserialize)]
 pub struct GrantPermissionBody {
     pub database_id: Uuid,
@@ -191,6 +194,11 @@ pub async fn update_user(
             )
             .await
             .map_err(AppError::Database)?;
+
+            // Revoke all tokens if user is deactivated
+            if !new_active {
+                state.token_blacklist.revoke_user(user_id).await;
+            }
         }
     }
 

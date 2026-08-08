@@ -17,11 +17,13 @@ Unit 2 triển khai toàn bộ authentication stack: OIDC/SSO login flow với P
 ### Backend — Auth Module (MỚI)
 | File | Mô tả |
 |------|-------|
-| `auth/mod.rs` | Module exports: jwt, oidc, middleware, extractors |
+| `auth/mod.rs` | Module exports: cookie, jwt, oidc, middleware, extractors, token_blacklist |
+| `auth/cookie.rs` | Cookie utilities cho JWT — build/clear Set-Cookie header, extract token từ Cookie header |
 | `auth/jwt.rs` | JWT generate/verify, Claims struct, 8h expiry, HS256 |
 | `auth/oidc.rs` | OIDC client init, PKCE flow, callback handler, token verification |
 | `auth/middleware.rs` | `require_auth` — extract Bearer token, verify, inject Claims |
 | `auth/extractors.rs` | `RequireAuth`, `RequireAdmin`, `RequireMaker`, `RequireChecker` |
+| `auth/token_blacklist.rs` | Token blacklist — revoke JWT tokens trước khi hết hạn (logout, deactivate user) |
 
 ### Backend — API Auth Handlers (MỚI)
 | File | Mô tả |
@@ -55,9 +57,12 @@ Browser ← GET /auth/callback?code=xxx&state=yyy
                                         ↓
 Backend: verify CSRF → exchange code → verify ID token → upsert user → gen JWT
                                         ↓
-Browser ← Redirect: frontend/#/auth/callback?token=<JWT>
+Backend: Set httpOnly cookie (secs_token) + Redirect → frontend/#/auth/callback
                                         ↓
-Frontend: lưu JWT vào localStorage, gửi kèm Bearer token mọi request
+Frontend: gọi GET /auth/me (cookie tự đính kèm) → lưu user info vào store → redirect dashboard
+
+Legacy flow (backward compat):
+  Nếu token trong URL fragment → lưu token + gọi /auth/me với Bearer header
 ```
 
 ## OIDC Security Features
@@ -70,6 +75,18 @@ Frontend: lưu JWT vào localStorage, gửi kèm Bearer token mọi request
 | Access Token Hash | Verify `at_hash` chống substitution attack |
 | Force Re-login | `prompt=login` — buộc user đăng nhập lại, không dùng IdP session cũ |
 | Graceful Startup | OIDC client init có fallback — server vẫn chạy nếu IdP down |
+
+## Cookie-Based Token Delivery
+
+| Property | Value |
+|----------|-------|
+| Cookie Name | `secs_token` |
+| HttpOnly | ✅ — JS không đọc được (chống XSS token theft) |
+| Secure | Conditional — true khi HTTPS (production), false khi HTTP (dev) |
+| SameSite | Lax — chống CSRF, cho phép top-level navigation |
+| Path | `/` — áp dụng mọi route |
+| Max-Age | 28800s (8 giờ, khớp JWT expiry) |
+| Clear | Set Max-Age=0, value rỗng khi logout |
 
 ## JWT Details
 
@@ -129,7 +146,7 @@ Protected (Bearer token required):
 ## Ghi chú
 
 - **Session store**: In-memory `HashMap<String, OidcSession>` — phù hợp cho single-instance app nội bộ. Production multi-instance cần Redis.
-- **Logout**: Stateless JWT — logout chỉ xóa token phía client. Token blacklist là enhancement sau nếu cần.
+- **Logout & Revocation**: Token blacklist đã được implement (`auth/token_blacklist.rs`). Hỗ trợ revoke token cụ thể (logout) và revoke tất cả tokens của user (deactivate). In-memory với periodic cleanup — phù hợp single-instance.
 - **Graceful OIDC init**: Nếu OIDC provider down lúc startup, server vẫn chạy nhưng `/auth/login` trả 500. Cho phép restart khi IdP recover.
 - **Dead code warnings**: 18 warnings (dead_code) — bình thường, sẽ được wire vào Unit 3 (Core Business).
 

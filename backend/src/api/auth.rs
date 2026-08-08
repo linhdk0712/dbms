@@ -93,7 +93,7 @@ pub async fn login(State(state): State<AppState>) -> Result<Response, AppError> 
 /// 2. Exchange code lấy ID token
 /// 3. Upsert user vào DB
 /// 4. Generate JWT
-/// 5. Redirect về frontend kèm token
+/// 5. Set httpOnly cookie + redirect về frontend
 pub async fn callback(
     State(state): State<AppState>,
     Query(query): Query<CallbackQuery>,
@@ -149,10 +149,18 @@ pub async fn callback(
         &state.config.jwt_secret,
     )?;
 
-    // 6. Redirect về frontend kèm token trong URL fragment
-    // Fragment (#) không được gửi lên server — an toàn hơn query param
-    let redirect_url = format!("{}/#/auth/callback?token={}", state.config.frontend_url, token);
-    Ok(Redirect::temporary(&redirect_url).into_response())
+    // 6. Set httpOnly cookie + redirect về frontend
+    let is_secure = state.config.frontend_url.starts_with("https");
+    let cookie = crate::auth::cookie::build_auth_cookie(&token, is_secure);
+
+    let redirect_url = format!("{}/#/auth/callback", state.config.frontend_url);
+    let mut response = Redirect::temporary(&redirect_url).into_response();
+    response.headers_mut().insert(
+        axum::http::header::SET_COOKIE,
+        cookie,
+    );
+
+    Ok(response)
 }
 
 /// `GET /auth/me` — Trả về thông tin user hiện tại từ JWT claims.
@@ -167,14 +175,40 @@ pub async fn me(RequireAuth(claims): RequireAuth) -> Json<UserInfo> {
     })
 }
 
-/// `POST /auth/logout` — Placeholder cho logout.
+/// `POST /auth/logout` — Revoke token hiện tại và xóa httpOnly cookie.
 ///
-/// Với JWT stateless, logout thực sự cần token blacklist hoặc short-lived tokens.
-/// Hiện tại chỉ trả OK — frontend xóa token phía client.
-pub async fn logout(RequireAuth(_claims): RequireAuth) -> StatusCode {
-    // Stateless JWT — không cần server-side invalidation cho v1
-    // Frontend sẽ xóa token khỏi localStorage
-    StatusCode::OK
+/// Token được thêm vào blacklist với TTL = remaining lifetime.
+/// Cookie được clear bằng Set-Cookie Max-Age=0.
+pub async fn logout(
+    State(state): State<AppState>,
+    RequireAuth(claims): RequireAuth,
+) -> Response {
+    // Tính remaining lifetime của token
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system time before Unix epoch")
+        .as_secs() as usize;
+
+    let remaining_secs = claims.exp.saturating_sub(now);
+    if remaining_secs > 0 {
+        let token_key = format!("{}:{}", claims.sub, claims.iat);
+        state
+            .token_blacklist
+            .revoke_token(&token_key, std::time::Duration::from_secs(remaining_secs as u64))
+            .await;
+    }
+
+    // Clear cookie
+    let is_secure = state.config.frontend_url.starts_with("https");
+    let clear_cookie = crate::auth::cookie::build_clear_cookie(is_secure);
+
+    let mut response = StatusCode::OK.into_response();
+    response.headers_mut().insert(
+        axum::http::header::SET_COOKIE,
+        clear_cookie,
+    );
+
+    response
 }
 
 

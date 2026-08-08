@@ -80,6 +80,8 @@ pub struct SqlRequest {
     pub approval_levels_required: i32,
     /// Change Request liên kết (optional) — dùng cho traceability golive.
     pub cr_id: Option<Uuid>,
+    /// Kết quả validate SQL (EXPLAIN) — lưu lại để hiển thị khi reload trang.
+    pub validation_result: Option<serde_json::Value>,
 }
 
 #[cfg(test)]

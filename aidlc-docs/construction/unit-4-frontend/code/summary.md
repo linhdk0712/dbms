@@ -37,13 +37,13 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 | File | Route | Role | Mô tả |
 |------|-------|------|-------|
 | `pages/Login.svelte` | `/login` | Public | SSO login redirect |
-| `pages/AuthCallback.svelte` | `/auth/callback` | Public | OIDC callback, token extract, user fetch |
+| `pages/AuthCallback.svelte` | `/auth/callback` | Public | OIDC callback — cookie-based auth (primary: gọi /auth/me, cookie tự đính kèm) + legacy token flow (backward compat: token từ URL fragment) |
 | `pages/Dashboard.svelte` | `/` | Any | Stats overview + quick links theo role |
 | `pages/maker/NewRequest.svelte` | `/requests/new` | Maker | Form tạo SQL request (save draft / submit) |
 | `pages/maker/MyRequests.svelte` | `/requests` | Maker | List requests + filter + actions (submit/cancel) |
 | `pages/maker/ChangeRequests.svelte` | `/change-requests` | Maker | List change requests (ManageEngine integration) |
 | `pages/checker/PendingList.svelte` | `/approvals` | Checker | List requests chờ duyệt |
-| `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + validate SQL + approve/reject (validate bắt buộc trước approve) |
+| `pages/checker/ReviewDetail.svelte` | `/approvals/:id` | Checker | SQL review + validate SQL + approve/reject (validate bắt buộc trước approve) + retry execution khi FAILED |
 | `pages/data-queries/NewDataQuery.svelte` | `/data-queries/new` | Maker | Form tạo Data Query — Basic mode (table/columns/filters builder) + Advanced mode (free-form SQL), assign users, ticket ID, expiration |
 | `pages/data-queries/MyDataQueries.svelte` | `/data-queries` | Maker | List Data Queries của user |
 | `pages/data-queries/DataQueryDetail.svelte` | `/data-queries/:id` | Maker | Chi tiết Data Query, trạng thái phê duyệt |
@@ -76,11 +76,12 @@ Unit 4 triển khai toàn bộ web app Svelte với DaisyUI, bao gồm: routing 
 
 | Feature | Implementation |
 |---------|----------------|
-| SSO Login | Redirect → `/auth/login` → OIDC → callback with token in fragment |
-| Auth Guard | Reactive check in App.svelte, redirect to `/login` if no token |
-| API Client | Centralized `api/index.js` — auto JWT attach, 401 auto-logout |
+| SSO Login | Redirect → `/auth/login` → OIDC → callback (cookie-based primary, legacy token fragment backward compat) |
+| Auth Guard | Reactive check in App.svelte, redirect to `/login` if no user |
+| API Client | Centralized `api/index.js` — cookie auto-attach (httpOnly) + fallback Bearer header, 401 auto-logout |
 | WebSocket | Auto-connect on login, auto-reconnect, toast notifications |
 | SQL Validation | Checker phải validate SQL (EXPLAIN) thành công trước khi approve — hiển thị execution plan + performance warnings |
+| Retry Execution | Checker có thể thực thi lại SQL khi request FAILED — hiển thị inline sau execution result hoặc retry block khi mở lại từ danh sách |
 | AI SQL Analysis | AiAnalysisPanel trong ReviewDetail — phân tích AI cho risk score, performance, security, best practices, cost estimation, suggested SQL |
 | Role-based UI | Dashboard shows quick links per role, pages enforce role via API |
 | Responsive | DaisyUI grid + responsive breakpoints |
@@ -132,7 +133,7 @@ File `api/endpoints.js` định nghĩa tập trung tất cả endpoint paths:
 |--------|--------|
 | `AUTH` | SSO/OIDC login, callback, logout, me |
 | `REQUESTS` | Maker CRUD, submit, cancel, clone, audit, analyze |
-| `APPROVALS` | Checker pending list, validate, approve, reject |
+| `APPROVALS` | Checker pending list, validate, approve, reject, retry |
 | `DATABASES` | Admin CRUD, test connection, my-permissions |
 | `USERS` | Admin user management, permissions grant/revoke, approver-units assign/unassign |
 | `DASHBOARD` | Role-aware statistics |

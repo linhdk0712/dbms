@@ -4,6 +4,7 @@ use tokio::sync::broadcast;
 
 use crate::ai::{AiCache, AiConfig, AiRateLimiter};
 use crate::api::auth::OidcSessionStore;
+use crate::auth::token_blacklist::TokenBlacklist;
 use crate::config::Config;
 use crate::models::notification::Notification;
 
@@ -25,6 +26,8 @@ pub struct AppState {
     pub oidc_client: Option<std::sync::Arc<CoreClient>>,
     /// In-memory session store cho OIDC PKCE flow.
     pub oidc_sessions: OidcSessionStore,
+    /// Token blacklist — cho phép revoke JWT trước khi hết hạn.
+    pub token_blacklist: TokenBlacklist,
 }
 
 impl AppState {
@@ -45,6 +48,7 @@ impl AppState {
             notification_tx,
             oidc_client: None,
             oidc_sessions: crate::api::auth::new_session_store(),
+            token_blacklist: TokenBlacklist::new(),
         }
     }
 

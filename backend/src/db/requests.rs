@@ -29,7 +29,7 @@ pub async fn create_request(
                        $8, NOW(), NOW())
                RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                          rejection_reason, executed_at, rows_affected, execution_error,
-                         created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                         created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
         )
         .bind(id)
         .bind(description)
@@ -48,7 +48,7 @@ pub async fn create_request(
                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
                RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                          rejection_reason, executed_at, rows_affected, execution_error,
-                         created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                         created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
         )
         .bind(id)
         .bind(description)
@@ -68,7 +68,7 @@ pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Option<SqlRequest>, sq
     sqlx::query_as::<_, SqlRequest>(
         r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                   rejection_reason, executed_at, rows_affected, execution_error,
-                  created_at, updated_at, submitted_at, approval_levels_required, cr_id
+                  created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result
            FROM sql_requests WHERE id = $1"#,
     )
     .bind(id)
@@ -89,7 +89,7 @@ pub async fn list_by_user(
         sqlx::query_as::<_, SqlRequest>(
             r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                       rejection_reason, executed_at, rows_affected, execution_error,
-                      created_at, updated_at, submitted_at, approval_levels_required, cr_id
+                      created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result
                FROM sql_requests
                WHERE created_by = $1 AND status = $2
                ORDER BY updated_at DESC
@@ -105,7 +105,7 @@ pub async fn list_by_user(
         sqlx::query_as::<_, SqlRequest>(
             r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                       rejection_reason, executed_at, rows_affected, execution_error,
-                      created_at, updated_at, submitted_at, approval_levels_required, cr_id
+                      created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result
                FROM sql_requests
                WHERE created_by = $1
                ORDER BY updated_at DESC
@@ -151,7 +151,7 @@ pub async fn list_pending(pool: &PgPool, checker_user_id: Uuid) -> Result<Vec<Sq
     sqlx::query_as::<_, SqlRequest>(
         r#"SELECT id, description, sql_content, status, database_id, created_by, approved_by,
                   rejection_reason, executed_at, rows_affected, execution_error,
-                  created_at, updated_at, submitted_at, approval_levels_required, cr_id
+                  created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result
            FROM sql_requests
            WHERE status = 'PENDING' AND created_by != $1
            ORDER BY submitted_at ASC"#,
@@ -177,7 +177,7 @@ pub async fn submit_request(pool: &PgPool, id: Uuid) -> Result<SqlRequest, sqlx:
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(id)
     .fetch_one(pool)
@@ -196,7 +196,7 @@ pub async fn approve_request(
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(id)
     .bind(approved_by)
@@ -216,7 +216,7 @@ pub async fn reject_request(
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(id)
     .bind(rejection_reason)
@@ -232,7 +232,7 @@ pub async fn cancel_request(pool: &PgPool, id: Uuid) -> Result<SqlRequest, sqlx:
            WHERE id = $1
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(id)
     .fetch_one(pool)
@@ -275,6 +275,21 @@ pub async fn mark_failed(
     Ok(())
 }
 
+/// Reset request từ FAILED → APPROVED để retry execution.
+/// Xóa execution_error cũ, giữ nguyên approved_by và approval records.
+pub async fn reset_to_approved(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"UPDATE sql_requests
+           SET status = 'APPROVED', execution_error = NULL, executed_at = NULL,
+               rows_affected = NULL, updated_at = NOW()
+           WHERE id = $1 AND status = 'FAILED'"#,
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Update request đang ở trạng thái DRAFT (BR-002: immutable sau khi submit).
 /// Chỉ cho phép update description và sql_content.
 pub async fn update_draft(
@@ -289,7 +304,7 @@ pub async fn update_draft(
            WHERE id = $1 AND status = 'DRAFT'
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(id)
     .bind(description)
@@ -314,7 +329,7 @@ pub async fn clone_request(
            WHERE id = $3
            RETURNING id, description, sql_content, status, database_id, created_by, approved_by,
                      rejection_reason, executed_at, rows_affected, execution_error,
-                     created_at, updated_at, submitted_at, approval_levels_required, cr_id"#,
+                     created_at, updated_at, submitted_at, approval_levels_required, cr_id, validation_result"#,
     )
     .bind(new_id)
     .bind(created_by)
@@ -371,4 +386,23 @@ pub async fn has_already_approved(
     .fetch_one(pool)
     .await?;
     Ok(exists)
+}
+
+/// Lưu kết quả validate SQL vào request (JSONB).
+/// Cho phép hiển thị lại khi reload trang mà không cần validate lại.
+pub async fn save_validation_result(
+    pool: &PgPool,
+    id: Uuid,
+    validation_result: &serde_json::Value,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"UPDATE sql_requests
+           SET validation_result = $2, updated_at = NOW()
+           WHERE id = $1"#,
+    )
+    .bind(id)
+    .bind(validation_result)
+    .execute(pool)
+    .await?;
+    Ok(())
 }

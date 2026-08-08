@@ -29,6 +29,7 @@ use tower_http::{
 };
 use tracing::Span;
 
+use crate::auth::global_rate_limit::{global_rate_limit, GlobalRateLimiter};
 use crate::auth::middleware::require_auth;
 use crate::auth::rate_limit::{rate_limit_login, RateLimiter};
 use crate::state::AppState;
@@ -42,6 +43,7 @@ const MAX_BODY_SIZE: usize = 100 * 1024;
 pub fn build_router(state: AppState) -> Router {
     let cors = build_cors(&state.config.frontend_url);
     let rate_limiter = RateLimiter::new();
+    let global_limiter = GlobalRateLimiter::new();
 
     // Public routes — không cần auth
     let public_routes = Router::new()
@@ -77,6 +79,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/approvals/:id/validate", post(approvals::validate))
         .route("/api/v1/approvals/:id/approve", post(approvals::approve))
         .route("/api/v1/approvals/:id/reject", post(approvals::reject))
+        .route("/api/v1/approvals/:id/retry", post(approvals::retry))
         // Databases (Admin)
         .route("/api/v1/databases/my-permissions", get(databases::list_my_databases))
         .route("/api/v1/databases/test-new", post(databases::test_new_connection))
@@ -128,6 +131,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/v1/users/:user_id/approver-units", get(approver_units::get_user_units))
         .route("/api/v1/users/:user_id/approver-units", post(approver_units::assign_unit))
         .route("/api/v1/users/:user_id/approver-units/:unit_id", delete(approver_units::unassign_unit))
+        .layer(axum_mw::from_fn(global_rate_limit))
+        .layer(axum::Extension(global_limiter))
         .layer(axum_mw::from_fn_with_state(state.clone(), require_auth));
 
     Router::new()
@@ -168,6 +173,7 @@ fn build_cors(frontend_url: &str) -> CorsLayer {
         .allow_methods([
             Method::GET,
             Method::POST,
+            Method::PUT,
             Method::PATCH,
             Method::DELETE,
         ])
@@ -202,6 +208,11 @@ async fn security_headers(
     headers.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("strict-origin-when-cross-origin"),
+    );
+    // Permissions-Policy: disable unnecessary browser features
+    headers.insert(
+        axum::http::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=()"),
     );
 
     response
