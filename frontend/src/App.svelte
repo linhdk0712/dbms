@@ -27,6 +27,9 @@
   import ApprovalMatrix from "./pages/admin/ApprovalMatrix.svelte";
   import ApproverUnits from "./pages/admin/ApproverUnits.svelte";
 
+  // Manual / Documentation
+  import Manual from "./pages/Manual.svelte";
+
   const routes = {
     "/login": Login,
     "/auth/callback": AuthCallback,
@@ -46,6 +49,8 @@
     "/data-query-approvals": DataQueryApprovals,
     "/admin/approval-matrix": ApprovalMatrix,
     "/admin/approver-units": ApproverUnits,
+    // Manual / Documentation
+    "/manual": Manual,
   };
 
   // Auth guard — redirect to login if not authenticated
