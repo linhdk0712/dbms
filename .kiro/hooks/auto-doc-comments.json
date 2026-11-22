@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Auto Document Functions",
+      "description": "Tự động tạo documentation comments cho các method/function được tạo mới hoặc chỉnh sửa khi save file. Áp dụng cho cả backend Rust (/// doc comments) và frontend JavaScript/Svelte (JSDoc comments).",
+      "trigger": "PostFileSave",
+      "matcher": "([^/]*\\.rs$|[^/]*\\.js$|[^/]*\\.svelte$)",
+      "action": {
+        "type": "agent",
+        "prompt": "Review the saved file and identify any functions, methods, or public APIs that are missing documentation comments. For Rust files (.rs), add /// doc comments following Rust conventions (describe purpose, parameters, return value, errors). For JavaScript/Svelte files (.js, .svelte), add JSDoc comments (/** */ with @param, @returns, @description). Only add comments to functions/methods that don't already have documentation comments. Do not modify any logic or functionality — only add missing doc comments."
+      },
+      "enabled": true
+    }
+  ]
+}

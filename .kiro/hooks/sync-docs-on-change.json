@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Sync Docs on Source Change",
+      "description": "When source files (Rust, Svelte, JS, SQL migrations, config) are edited, ask the agent to update relevant documentation in the aidlc-docs folder or README.",
+      "trigger": "PostFileSave",
+      "matcher": "([^/]*\\.rs$|[^/]*\\.svelte$|[^/]*\\.js$|[^/]*\\.sql$|[^/]*\\.toml$|[^/]*\\.html$|docker-compose\\.yml$|Dockerfile$)",
+      "action": {
+        "type": "agent",
+        "prompt": "A source file was just edited. Review the change and determine if any documentation needs to be updated. Check the aidlc-docs/ folder (especially construction/*/code/summary.md files) and any README.md for outdated information. If the change affects APIs, data models, business logic, configuration, or project structure, update the relevant docs to stay in sync. If the change is minor (formatting, comments, variable renames) and doesn't affect documentation, do nothing."
+      },
+      "enabled": true
+    }
+  ]
+}
